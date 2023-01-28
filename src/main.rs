@@ -59,6 +59,7 @@ struct Tweet {
     /// Time of tweet
     ///
     /// See [`TWITTER_DATE`]
+    // time::PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)?;
     created_at: String,
 }
 
@@ -68,7 +69,7 @@ struct TweetObj {
     tweet: Tweet,
 }
 
-fn collect_tweets(path: &Path) -> Result<Vec<()>> {
+fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
     let mut files = Vec::with_capacity(10);
     let path = path.join("data");
     for file in path.read_dir()? {
@@ -101,13 +102,8 @@ fn collect_tweets(path: &Path) -> Result<Vec<()>> {
         let data = fs::read_to_string(path)?;
 
         let data: Vec<TweetObj> = from_str(&data[PREFIX.len()..])?;
-        for tweet in data {
-            let tw = tweet.tweet;
-            dbg!(&tw);
-            let time = time::PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)?;
-            dbg!(&time);
-            break;
-        }
+        out.extend(data.into_iter().map(|t| t.tweet));
+
         break;
     }
 
