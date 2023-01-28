@@ -5,9 +5,17 @@ edition = "2021"
 
 [dependencies]
 diesel = { version = "2.0.3", features = ["sqlite"] }
-serde = "1.0.152"
+serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
 # Use clap v3 until colors are restored.
 # See https://github.com/clap-rs/clap/issues/3234
 clap = { version = "3.2.23", features = ["derive", "color"] }
 anyhow = "1.0.68"
+reqwest = { version = "0.11.14", features = ["json", "gzip", "blocking"] }
+time = { version = "0.3.17", features = [
+    "formatting",
+    "macros",
+    "serde",
+    "serde-human-readable",
+] }
+url = "2.3.1"
