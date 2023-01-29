@@ -156,9 +156,10 @@ fn main() -> Result<()> {
             id_str: tw.id_str.parse().unwrap(),
             retweets: tw.retweet_count.parse().unwrap(),
             likes: tw.like_count.parse().unwrap(),
-            // created_at: DateTime(PrimitiveDateTime::parse(&tw.created_at,
-            // TWITTER_DATE).unwrap()),
-            created_at: todo!(),
+            created_at: PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
+                .unwrap()
+                .assume_utc()
+                .unix_timestamp(),
         })
         .collect();
     dbg!(tweets.first());
@@ -195,15 +196,16 @@ fn main() -> Result<()> {
             }
         })
     })?;
-    // let off = DateTime(PrimitiveDateTime::new(off.date(), off.time()));
+    let off = off.unix_timestamp();
     dbg!(&off);
-    #[cfg(no)]
+
     {
         use crate::schema::tweets::dsl::*;
         let found: Vec<MTweet> = tweets
             .filter(created_at.lt(&off))
             .load::<MTweet>(&mut conn)?;
         dbg!(found.first());
+        dbg!(found.len());
         // let found = tweets.filter(created_at.lt(&off));
         // dbg!(found);
     }
