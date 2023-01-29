@@ -193,10 +193,16 @@ fn main() -> Result<()> {
             }
         })
     })?;
+    let off = DateTime(PrimitiveDateTime::new(off.date(), off.time()));
     dbg!(&off);
     {
         use crate::schema::tweets::dsl::*;
-        // tweets.filter(created_at.like(other))
+        let found: Vec<MTweet> = tweets
+            .filter(created_at.lt(&off))
+            .load::<MTweet>(&mut conn)?;
+        dbg!(found.first());
+        // let found = tweets.filter(created_at.lt(&off));
+        // dbg!(found);
     }
 
     // let mut args = Args::parse();

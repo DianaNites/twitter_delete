@@ -1,10 +1,12 @@
 use diesel::{
     backend::Backend,
     prelude::*,
-    serialize::{self, Output, ToSql},
-    sql_types,
+    serialize::{self, IsNull, Output, ToSql},
+    sql_types::Text,
+    sqlite::Sqlite,
     AsExpression,
     FromSqlRow,
+    IntoSql,
 };
 use time::PrimitiveDateTime;
 
@@ -27,11 +29,23 @@ pub struct Tweet {
     pub created_at: DateTime,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Queryable, AsExpression)]
+#[diesel(sql_type = Text)]
 pub struct DateTime(pub PrimitiveDateTime);
 
 impl From<DateTime> for String {
     fn from(val: DateTime) -> Self {
         val.0.format(&DB_DATE).unwrap()
+    }
+}
+
+impl ToSql<Text, Sqlite> for DateTime
+where
+    String: ToSql<Text, Sqlite>,
+{
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
+        let s = self.0.format(&DB_DATE)?;
+        out.set_value(s);
+        Ok(IsNull::No)
     }
 }
