@@ -1,16 +1,37 @@
-use diesel::prelude::*;
+use diesel::{
+    backend::Backend,
+    prelude::*,
+    serialize::{self, Output, ToSql},
+    sql_types,
+    AsExpression,
+    FromSqlRow,
+};
+use time::PrimitiveDateTime;
 
-#[derive(Debug, Queryable)]
+use crate::{schema::tweets, DB_DATE};
+
+#[derive(Debug, Queryable, Insertable)]
+#[diesel(table_name = tweets)]
 pub struct Tweet {
     /// Tweet ID
-    pub id_str: i64,
+    pub id_str: String,
 
     /// Number of retweets
-    pub retweet: i32,
+    pub retweets: i32,
 
     /// Number of likes
     pub likes: i32,
 
-    /// Time of tweet, in ISO-8601.
-    pub created_at: String,
+    /// Time of tweet, in a subset of ISO-8601, see [`DB_DATE`]
+    #[diesel(serialize_as = String)]
+    pub created_at: DateTime,
+}
+
+#[derive(Debug)]
+pub struct DateTime(pub PrimitiveDateTime);
+
+impl From<DateTime> for String {
+    fn from(val: DateTime) -> Self {
+        val.0.format(&DB_DATE).unwrap()
+    }
 }

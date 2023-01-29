@@ -152,6 +152,7 @@ checksum = "4391a22b19c916e50bec4d6140f29bdda3e3bb187223fe6e3ea0b6e4d1021c04"
 dependencies = [
  "diesel_derives",
  "libsqlite3-sys",
+ "time",
 ]
 
 [[package]]

@@ -8,6 +8,7 @@
     clippy::never_loop
 )]
 use std::{
+    fmt::Display,
     fs,
     path::{Path, PathBuf},
 };
@@ -24,10 +25,12 @@ use time::{
         FormatItem,
     },
     macros::format_description,
+    Duration,
+    OffsetDateTime,
     PrimitiveDateTime,
 };
 
-use crate::models::Tweet as MTweet;
+use crate::models::{DateTime, Tweet as MTweet};
 
 mod models;
 mod schema;
@@ -83,7 +86,6 @@ struct Tweet {
     /// Time of tweet
     ///
     /// See [`TWITTER_DATE`]
-    // time::PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)?;
     created_at: String,
 }
 
@@ -127,6 +129,7 @@ fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
 
         let data: Vec<TweetObj> = from_str(&data[PREFIX.len()..])?;
         out.extend(data.into_iter().map(|t| t.tweet));
+        break;
     }
 
     Ok(out)
@@ -151,12 +154,9 @@ fn main() -> Result<()> {
             // Unwrap should only fail if twitter archive is bad/evil
             // Also `?` cant be used here
             id_str: tw.id_str.parse().unwrap(),
-            retweet: tw.retweet_count.parse().unwrap(),
+            retweets: tw.retweet_count.parse().unwrap(),
             likes: tw.like_count.parse().unwrap(),
-            created_at: PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
-                .unwrap()
-                .format(&DB_DATE)
-                .unwrap(),
+            created_at: DateTime(PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE).unwrap()),
         })
         .collect();
     dbg!(tweets.first());
@@ -170,8 +170,34 @@ fn main() -> Result<()> {
     conn.run_pending_migrations(MIGRATIONS)
         .map_err(|e| anyhow!(e))?;
 
+    // Add tweets to db
+    let added = diesel::insert_into(crate::schema::tweets::table)
+        .values(tweets)
+        .execute(&mut conn)?;
+    println!("Loaded {added} tweets");
+
     // NOTE: Test select tweets older than 30 days
-    //
+    let off = Duration::days(30);
+    let off = OffsetDateTime::now_utc().checked_sub(off).ok_or_else(|| {
+        anyhow!("Specified offset of {} is too far in the past", {
+            if off.whole_weeks() > 52 {
+                format!("{} years", off.whole_weeks() / 52)
+            } else if off.whole_weeks() > 1 {
+                format!("{} weeks", off.whole_weeks())
+            } else if off.whole_days() > 1 {
+                format!("{} days", off.whole_days())
+            } else if off.whole_hours() > 1 {
+                format!("{} hours", off.whole_hours())
+            } else {
+                format!("{off}")
+            }
+        })
+    })?;
+    dbg!(&off);
+    {
+        use crate::schema::tweets::dsl::*;
+        // tweets.filter(created_at.like(other))
+    }
 
     // let mut args = Args::parse();
     Ok(())
