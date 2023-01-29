@@ -93,6 +93,7 @@ struct Tweet {
 
     /// Number of likes
     #[serde(rename = "favorite_count")]
+    #[serde(default)]
     like_count: String,
 
     /// Time of tweet
@@ -369,11 +370,22 @@ fn main() -> Result<()> {
                     )
                     .form(params)
                     .send()?;
-                dbg!(&res.status());
-                let res: LookupResp = res.json()?;
+                let res: LookupResp = res.json().unwrap();
 
-                dbg!(&res);
-                break;
+                let gone = conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                    let mut gone = 0;
+                    for t in tweet {
+                        if let Some(v) = res.id.get(&t.id_str) {
+                            if v.is_none() {
+                                gone += diesel::update(tweets.filter(id_str.eq(&t.id_str)))
+                                    .set(deleted.eq(true))
+                                    .execute(conn)?;
+                            }
+                        }
+                    }
+                    Ok(gone)
+                })?;
+                println!("Marked {gone} tweets as already deleted");
             }
         }
 
@@ -388,5 +400,25 @@ fn main() -> Result<()> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct LookupResp {
-    id: HashMap<String, Option<Tweet>>,
+    id: HashMap<String, Option<LookupTweet>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct LookupTweet {
+    /// Tweet ID
+    id_str: String,
+
+    /// Number of retweets
+    retweet_count: u64,
+
+    /// Number of likes
+    #[serde(rename = "favorite_count")]
+    #[serde(default)]
+    like_count: u64,
+
+    /// Time of tweet
+    ///
+    /// See [`TWITTER_DATE`]
+    created_at: String,
 }
