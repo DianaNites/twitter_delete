@@ -181,7 +181,7 @@ fn main() -> Result<()> {
     println!("Loaded {added} tweets");
 
     // NOTE: Test select tweets older than 30 days
-    let off = Duration::days(30);
+    let off = Duration::days(120);
     let off = OffsetDateTime::now_utc().checked_sub(off).ok_or_else(|| {
         anyhow!("Specified offset of {} is too far in the past", {
             if off.whole_weeks() > 52 {
@@ -205,18 +205,21 @@ fn main() -> Result<()> {
 
     {
         use crate::schema::tweets::dsl::*;
+        let conn = &mut conn;
 
         let t = tweets.filter(created_at.lt(&off));
 
-        let found: Vec<MTweet> = t.load::<MTweet>(&mut conn)?;
+        let found: Vec<MTweet> = t.load::<MTweet>(conn)?;
         dbg!(found.first());
         dbg!(found.len());
 
-        // TODO: Delete here
+        {
+            //
+        }
 
-        let delete = diesel::update(t).set(deleted.eq(true)).execute(&mut conn)?;
+        let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
         dbg!(delete);
-    }
+    };
 
     // let mut args = Args::parse();
     Ok(())
