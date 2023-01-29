@@ -247,7 +247,7 @@ fn main() -> Result<()> {
                 let mut rng = thread_rng();
                 let auth = &[
                     //
-                    ("Oauth oauth_consumer_key", &keys.api_key),
+                    ("oauth_consumer_key", &keys.api_key),
                     ("oauth_nonce", &Alphanumeric.sample_string(&mut rng, 32)),
                     ("oauth_signature_method", &"HMAC-SHA1".to_string()),
                     (
@@ -267,6 +267,7 @@ fn main() -> Result<()> {
                         )
                     })
                     .collect();
+                auth.sort_by(|a, b| a.0.cmp(&b.0));
 
                 let mut sig = auth.clone();
                 sig.extend_from_slice(params);
@@ -300,11 +301,11 @@ fn main() -> Result<()> {
 
                 let sig = STANDARD.encode(sig);
 
-                let mut auth_out = String::new();
-                for (k, v) in auth
-                    .into_iter()
-                    .chain(once(("oauth_signature".to_string(), sig)))
-                {
+                let mut auth_out = String::from("Oauth ");
+                for (k, v) in auth.into_iter().chain(once((
+                    "oauth_signature".to_string(),
+                    encode(&sig).into_owned(),
+                ))) {
                     auth_out.push_str(&k);
                     auth_out.push_str("=\"");
                     auth_out.push_str(&v);
@@ -343,7 +344,7 @@ fn main() -> Result<()> {
                     .post(TWEET_LOOKUP_URL)
                     .header(
                         AUTHORIZATION,
-                        create_auth(
+                        dbg!(create_auth(
                             &keys,
                             TWEET_LOOKUP_URL,
                             Method::POST,
@@ -351,7 +352,7 @@ fn main() -> Result<()> {
                                 //
                                 ("id".to_string(), ids.clone()),
                             ],
-                        ),
+                        )),
                     )
                     .body(body)
                     .send()?;
