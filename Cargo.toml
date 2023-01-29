@@ -11,7 +11,12 @@ serde_json = "1.0.91"
 # See https://github.com/clap-rs/clap/issues/3234
 clap = { version = "3.2.23", features = ["derive", "color"] }
 anyhow = "1.0.68"
-reqwest = { version = "0.11.14", features = ["json", "gzip", "blocking"] }
+reqwest = { version = "0.11.14", features = [
+    "deflate",
+    "gzip",
+    "json",
+    "blocking",
+] }
 time = { version = "0.3.17", features = [
     "formatting",
     "macros",
@@ -20,3 +25,6 @@ time = { version = "0.3.17", features = [
 ] }
 url = "2.3.1"
 diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
+
+[profile.dev.package."*"]
+opt-level = 2

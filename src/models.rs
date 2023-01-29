@@ -12,7 +12,7 @@ use diesel::{
 };
 use time::{OffsetDateTime, PrimitiveDateTime};
 
-use crate::{schema::tweets, DB_DATE};
+use crate::schema::tweets;
 
 #[derive(Queryable, Insertable)]
 #[diesel(table_name = tweets)]

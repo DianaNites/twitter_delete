@@ -43,13 +43,17 @@ static TWITTER_DATE: &[FormatItem] = format_description!(
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-const DB_CONFIG: u128 = Config::DEFAULT
-    .set_formatted_components(
-        time::format_description::well_known::iso8601::FormattedComponents::DateTime,
-    )
-    .encode();
+/// Lookup 100 tweet IDs at a time
+///
+/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-lookup
+const TWEET_LOOKUP_URL: &str = "https://api.twitter.com/1.1/statuses/lookup.json";
 
-const DB_DATE: Iso8601<DB_CONFIG> = Iso8601::<{ DB_CONFIG }>;
+/// Delete a tweet
+///
+/// Ends in `{id}.json`
+///
+/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id
+const TWEET_DESTROY_URL: &str = "https://api.twitter.com/1.1/statuses/destroy/";
 
 /// Parse tweets from your twitter archive
 #[derive(Parser, Debug)]
@@ -167,18 +171,18 @@ fn main() -> Result<()> {
 
     let mut conn = SqliteConnection::establish(db_path)?;
 
-    // TODO: Don't leave this in production lol
-    conn.revert_all_migrations(MIGRATIONS)
-        .map_err(|e| anyhow!(e))?;
-
     conn.run_pending_migrations(MIGRATIONS)
         .map_err(|e| anyhow!(e))?;
 
-    // Add tweets to db
-    let added = diesel::insert_into(crate::schema::tweets::table)
+    // Add tweets to db, ignoring ones already there
+    let added = diesel::insert_or_ignore_into(crate::schema::tweets::table)
         .values(&tweets)
         .execute(&mut conn)?;
-    println!("Loaded {added} tweets");
+
+    println!("Loaded {added} tweets. Total tweets {}", {
+        use crate::schema::tweets::dsl::*;
+        tweets.count().get_result::<i64>(&mut conn)?
+    });
 
     // NOTE: Test select tweets older than 30 days
     let off = Duration::days(120);
@@ -214,7 +218,21 @@ fn main() -> Result<()> {
         dbg!(found.len());
 
         {
-            //
+            use req::{
+                blocking::{ClientBuilder, RequestBuilder},
+                header,
+                header::{HeaderMap, HeaderValue},
+            };
+            use reqwest as req;
+
+            let mut headers = HeaderMap::new();
+
+            let mut client = ClientBuilder::new() //
+                .default_headers(headers)
+                .build()?;
+            // Check for already deleted tweets
+
+            // client.post(format!("{TWEET_LOOKUP_URL}"));
         }
 
         let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
