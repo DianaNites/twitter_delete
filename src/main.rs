@@ -14,15 +14,39 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use diesel::{prelude::*, SqliteConnection};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
-use time::{format_description::FormatItem, macros::format_description};
+use time::{
+    format_description::{
+        well_known::{iso8601::Config, Iso8601},
+        FormatItem,
+    },
+    macros::format_description,
+    PrimitiveDateTime,
+};
+
+use crate::models::Tweet as MTweet;
+
+mod models;
+mod schema;
 
 static ACCESS: &str = include_str!("../scratch/access.json");
 
 static TWITTER_DATE: &[FormatItem] = format_description!(
     "[weekday repr:short case_sensitive:false] [month repr:short] [day] [hour]:[minute]:[second] +0000 [year]"
 );
+
+const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
+const DB_CONFIG: u128 = Config::DEFAULT
+    .set_formatted_components(
+        time::format_description::well_known::iso8601::FormattedComponents::DateTime,
+    )
+    .encode();
+
+const DB_DATE: Iso8601<DB_CONFIG> = Iso8601::<{ DB_CONFIG }>;
 
 /// Parse tweets from your twitter archive
 #[derive(Parser, Debug)]
@@ -103,17 +127,52 @@ fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
 
         let data: Vec<TweetObj> = from_str(&data[PREFIX.len()..])?;
         out.extend(data.into_iter().map(|t| t.tweet));
-
-        break;
     }
 
     Ok(out)
 }
 
 fn main() -> Result<()> {
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("Missing $HOME"))?;
+    let config_path = Path::new(&home).join(".config/twitter_delete");
+    let db_path = config_path.join("tweets.db");
+    dbg!(&db_path, db_path.exists());
+    let db_path = db_path
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid UTF-8 in PATH"))?;
+    fs::create_dir_all(config_path)?;
     let keys: Access = from_str(ACCESS)?;
-    let tweets = collect_tweets(&keys.test_path)?;
-    // let mut args = Args::parse();
 
+    let tweets = collect_tweets(&keys.test_path)?;
+    dbg!(tweets.first());
+    let tweets: Vec<_> = tweets
+        .into_iter()
+        .map(|tw| MTweet {
+            // Unwrap should only fail if twitter archive is bad/evil
+            // Also `?` cant be used here
+            id_str: tw.id_str.parse().unwrap(),
+            retweet: tw.retweet_count.parse().unwrap(),
+            likes: tw.like_count.parse().unwrap(),
+            created_at: PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
+                .unwrap()
+                .format(&DB_DATE)
+                .unwrap(),
+        })
+        .collect();
+    dbg!(tweets.first());
+
+    let mut conn = SqliteConnection::establish(db_path)?;
+
+    // TODO: Don't leave this in production lol
+    conn.revert_all_migrations(MIGRATIONS)
+        .map_err(|e| anyhow!(e))?;
+
+    conn.run_pending_migrations(MIGRATIONS)
+        .map_err(|e| anyhow!(e))?;
+
+    // NOTE: Test select tweets older than 30 days
+    //
+
+    // let mut args = Args::parse();
     Ok(())
 }

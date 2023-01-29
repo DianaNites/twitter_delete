@@ -19,3 +19,4 @@ time = { version = "0.3.17", features = [
     "serde-human-readable",
 ] }
 url = "2.3.1"
+diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
