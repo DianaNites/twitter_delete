@@ -349,21 +349,24 @@ fn main() -> Result<()> {
                     ids.pop();
                 }
 
+                let params = &[
+                    //
+                    ("id", ids.as_str()),
+                    ("map", "true"),
+                ];
+
                 let res = client
                     .post(TWEET_LOOKUP_URL)
                     .header(
                         AUTHORIZATION,
-                        dbg!(create_auth(
+                        create_auth(
                             &keys,
                             TWEET_LOOKUP_URL,
                             Method::POST,
-                            &[
-                                //
-                                ("id".to_string(), ids.clone()),
-                            ],
-                        )),
+                            &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+                        ),
                     )
-                    .form(&[("id", ids.as_str())])
+                    .form(params)
                     .send()?;
                 dbg!(&res.status());
                 dbg!(&res.text());
