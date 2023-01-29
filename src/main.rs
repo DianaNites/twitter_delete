@@ -257,58 +257,66 @@ fn main() -> Result<()> {
                     ("oauth_token", &keys.access),
                     ("oauth_version", &"1.0".to_string()),
                 ];
+                // Percent encoded auth values
                 let mut auth: Vec<_> = auth
                     .iter()
-                    .map(|(k, v)| {
-                        (
-                            //
-                            encode(k).into_owned(),
-                            encode(v).into_owned(),
-                        )
-                    })
+                    .map(|(k, v)| (encode(k).into_owned(), encode(v).into_owned()))
                     .collect();
                 auth.sort_by(|a, b| a.0.cmp(&b.0));
 
+                // Auth values used for generating the signature
                 let mut sig = auth.clone();
-                sig.extend_from_slice(params);
+                // Includes parameters
+                sig.extend(
+                    params
+                        .iter()
+                        .map(|(k, v)| (encode(k).into_owned(), encode(v).into_owned())),
+                );
+                // Has to be sorted
                 sig.sort_by(|a, b| a.0.cmp(&b.0));
 
-                let mut sig_out = String::new();
+                // Parameter string
+                let mut param_string = String::new();
                 for (k, v) in sig {
-                    sig_out.push_str(&k);
-                    sig_out.push('=');
-                    sig_out.push_str(&v);
-                    sig_out.push('&');
+                    param_string.push_str(&k);
+                    param_string.push('=');
+                    param_string.push_str(&v);
+                    param_string.push('&');
                 }
                 // Pop last &
-                sig_out.pop();
+                param_string.pop();
 
+                // Signature base string
                 let mut sig_base = String::new();
                 sig_base.push_str(method.as_str());
                 sig_base.push('&');
                 sig_base.push_str(&encode(base_url));
                 sig_base.push('&');
-                sig_base.push_str(&encode(&sig_out));
+                sig_base.push_str(&encode(&param_string));
 
-                let mut key = String::new();
-                key.push_str(&keys.api_secret);
-                key.push('&');
-                key.push_str(&encode(&keys.access_secret));
+                // Sign key
+                let mut sign_key = String::new();
+                sign_key.push_str(&encode(&keys.api_secret));
+                sign_key.push('&');
+                sign_key.push_str(&encode(&keys.access_secret));
 
-                let mut mac: HmacSha1 = HmacSha1::new_from_slice(key.as_bytes()).unwrap();
+                // Sign it
+                let mut mac: HmacSha1 = HmacSha1::new_from_slice(sign_key.as_bytes()).unwrap();
                 mac.update(sig_base.as_bytes());
                 let sig = mac.finalize().into_bytes();
 
                 let sig = STANDARD.encode(sig);
+                dbg!(&sig);
+                panic!();
 
                 let mut auth_out = String::from("Oauth ");
                 for (k, v) in auth.into_iter().chain(once((
                     "oauth_signature".to_string(),
                     encode(&sig).into_owned(),
                 ))) {
-                    auth_out.push_str(&k);
+                    auth_out.push_str(&encode(&k));
                     auth_out.push_str("=\"");
-                    auth_out.push_str(&v);
+                    auth_out.push_str(&encode(&v));
                     auth_out.push('"');
                     auth_out.push_str(", ");
                 }
