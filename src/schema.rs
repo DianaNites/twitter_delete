@@ -5,6 +5,6 @@ diesel::table! {
         id_str -> Text,
         retweets -> Integer,
         likes -> Integer,
-        created_at -> Text,
+        created_at -> Integer,
     }
 }

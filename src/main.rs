@@ -30,7 +30,7 @@ use time::{
     PrimitiveDateTime,
 };
 
-use crate::models::{DateTime, Tweet as MTweet};
+use crate::models::Tweet as MTweet;
 
 mod models;
 mod schema;
@@ -156,7 +156,9 @@ fn main() -> Result<()> {
             id_str: tw.id_str.parse().unwrap(),
             retweets: tw.retweet_count.parse().unwrap(),
             likes: tw.like_count.parse().unwrap(),
-            created_at: DateTime(PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE).unwrap()),
+            // created_at: DateTime(PrimitiveDateTime::parse(&tw.created_at,
+            // TWITTER_DATE).unwrap()),
+            created_at: todo!(),
         })
         .collect();
     dbg!(tweets.first());
@@ -193,8 +195,9 @@ fn main() -> Result<()> {
             }
         })
     })?;
-    let off = DateTime(PrimitiveDateTime::new(off.date(), off.time()));
+    // let off = DateTime(PrimitiveDateTime::new(off.date(), off.time()));
     dbg!(&off);
+    #[cfg(no)]
     {
         use crate::schema::tweets::dsl::*;
         let found: Vec<MTweet> = tweets
