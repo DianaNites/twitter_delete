@@ -139,7 +139,7 @@ fn main() -> Result<()> {
     let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("Missing $HOME"))?;
     let config_path = Path::new(&home).join(".config/twitter_delete");
     let db_path = config_path.join("tweets.db");
-    dbg!(&db_path, db_path.exists());
+
     let db_path = db_path
         .to_str()
         .ok_or_else(|| anyhow!("Invalid UTF-8 in PATH"))?;
@@ -147,22 +147,23 @@ fn main() -> Result<()> {
     let keys: Access = from_str(ACCESS)?;
 
     let tweets = collect_tweets(&keys.test_path)?;
-    dbg!(tweets.first());
+
     let tweets: Vec<_> = tweets
         .into_iter()
-        .map(|tw| MTweet {
+        .map(|tw| {
             // Unwrap should only fail if twitter archive is bad/evil
             // Also `?` cant be used here
-            id_str: tw.id_str.parse().unwrap(),
-            retweets: tw.retweet_count.parse().unwrap(),
-            likes: tw.like_count.parse().unwrap(),
-            created_at: PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
-                .unwrap()
-                .assume_utc()
-                .unix_timestamp(),
+            MTweet::new(
+                tw.id_str.parse().unwrap(),
+                tw.retweet_count.parse().unwrap(),
+                tw.like_count.parse().unwrap(),
+                PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
+                    .unwrap()
+                    .assume_utc()
+                    .unix_timestamp(),
+            )
         })
         .collect();
-    dbg!(tweets.first());
 
     let mut conn = SqliteConnection::establish(db_path)?;
 
@@ -206,8 +207,6 @@ fn main() -> Result<()> {
             .load::<MTweet>(&mut conn)?;
         dbg!(found.first());
         dbg!(found.len());
-        // let found = tweets.filter(created_at.lt(&off));
-        // dbg!(found);
     }
 
     // let mut args = Args::parse();

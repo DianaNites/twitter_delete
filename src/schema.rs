@@ -6,5 +6,6 @@ diesel::table! {
         retweets -> Integer,
         likes -> Integer,
         created_at -> BigInt,
+        deleted -> Bool,
     }
 }

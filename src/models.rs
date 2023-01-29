@@ -28,6 +28,21 @@ pub struct Tweet {
 
     /// Time of tweet, UTC unix time
     pub created_at: i64,
+
+    /// Whether the tweet has been deleted
+    pub deleted: bool,
+}
+
+impl Tweet {
+    pub fn new(id_str: String, retweets: i32, likes: i32, created_at: i64) -> Self {
+        Self {
+            id_str,
+            retweets,
+            likes,
+            created_at,
+            deleted: false,
+        }
+    }
 }
 
 impl std::fmt::Debug for Tweet {
