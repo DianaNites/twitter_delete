@@ -12,6 +12,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     fs,
+    io::stdout,
     iter::once,
     path::{Path, PathBuf},
 };
@@ -225,6 +226,8 @@ fn main() -> Result<()> {
         let found: Vec<MTweet> = t.load::<MTweet>(conn)?;
 
         {
+            use std::io::Write;
+
             use base64::{engine::general_purpose::STANDARD, Engine as _};
             use hmac::{Hmac, Mac};
             use req::{
@@ -232,6 +235,7 @@ fn main() -> Result<()> {
                 header,
                 header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
                 Method,
+                StatusCode,
                 Url,
             };
             use reqwest as req;
@@ -340,6 +344,7 @@ fn main() -> Result<()> {
             // Tweet IDs are assumed to be 19 characters
             // 100 chunks, 19 ID + 1 comma
             let mut ids = String::with_capacity(100 * 20);
+            let mut stdout = stdout().lock();
             for tweet in t.chunks(100) {
                 ids.clear();
                 for t in tweet {
@@ -357,20 +362,38 @@ fn main() -> Result<()> {
                     ("map", "true"),
                 ];
 
-                let res = client
-                    .post(TWEET_LOOKUP_URL)
-                    .header(
-                        AUTHORIZATION,
-                        create_auth(
-                            &keys,
-                            TWEET_LOOKUP_URL,
-                            Method::POST,
-                            &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
-                        ),
-                    )
-                    .form(params)
-                    .send()?;
-                let res: LookupResp = res.json().unwrap();
+                let res = loop {
+                    let r = client
+                        .post(TWEET_LOOKUP_URL)
+                        .header(
+                            AUTHORIZATION,
+                            create_auth(
+                                &keys,
+                                TWEET_LOOKUP_URL,
+                                Method::POST,
+                                &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+                            ),
+                        )
+                        .form(params)
+                        .send()?;
+                    if r.status().is_success() {
+                        break r;
+                    } else if r.status() == StatusCode::TOO_MANY_REQUESTS {
+                        if let Some(r) = r
+                            .headers()
+                            .get("x-rate-limit-reset")
+                            .map(|f| f.to_str())
+                            .transpose()?
+                        {
+                            let secs: u64 = r.parse()?;
+                            eprintln!("Rate limited, waiting {secs} seconds");
+                            std::thread::sleep(std::time::Duration::from_secs(secs));
+                        }
+                    } else if r.status().is_client_error() || r.status().is_server_error() {
+                        return Err(anyhow!("Encountered HTTP error {}", r.status()));
+                    }
+                };
+                let res: LookupResp = res.json()?;
 
                 let gone = conn.transaction::<_, diesel::result::Error, _>(|conn| {
                     let mut gone = 0;
@@ -385,7 +408,7 @@ fn main() -> Result<()> {
                     }
                     Ok(gone)
                 })?;
-                println!("Marked {gone} tweets as already deleted");
+                writeln!(&mut stdout, "Marked {gone} tweets as already deleted")?;
             }
         }
 
