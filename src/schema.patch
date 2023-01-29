@@ -1,0 +1,15 @@
+diff --git a/src/schema.rs b/src/schema.rs
+index 5442f72..6c3cbf1 100644
+--- a/src/schema.rs
++++ b/src/schema.rs
+@@ -2,9 +2,9 @@
+ 
+ diesel::table! {
+     tweets (id_str) {
+         id_str -> Text,
+         retweets -> Integer,
+         likes -> Integer,
+-        created_at -> Integer,
++        created_at -> BigInt,
+     }
+ }
