@@ -37,6 +37,7 @@ use time::{
     Duration,
     OffsetDateTime,
     PrimitiveDateTime,
+    UtcOffset,
 };
 
 use crate::models::Tweet as MTweet;
@@ -386,8 +387,28 @@ fn main() -> Result<()> {
                             .transpose()?
                         {
                             let secs: u64 = r.parse()?;
-                            eprintln!("Rate limited, waiting {secs} seconds");
-                            std::thread::sleep(std::time::Duration::from_secs(secs));
+                            let dur = std::time::Duration::from_secs(secs);
+                            // Default to 15 minutes
+                            let secs = (secs as i64)
+                                .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
+                                .unwrap_or(60 * 15);
+                            let dur = std::time::Duration::from_secs(secs as u64);
+                            eprintln!(
+                                "Rate limited, waiting until UTC {} ({secs} seconds)",
+                                (OffsetDateTime::now_utc() + Duration::seconds(secs))
+                                    // .to_offset(UtcOffset::current_local_offset()?)
+                                    .time()
+                                    .format(format_description!(
+                                        "[hour repr:12]:[minute]:[second] [period]"
+                                    ))?
+                            );
+                            std::thread::sleep(dur);
+                        } else {
+                            // Try waiting 15 minutes if there was no reset
+                            // header
+                            eprintln!("Rate limited, waiting 15 minutes");
+                            let dur = std::time::Duration::from_secs(60 * 15);
+                            std::thread::sleep(dur);
                         }
                     } else if r.status().is_client_error() || r.status().is_server_error() {
                         return Err(anyhow!("Encountered HTTP error {}", r.status()));

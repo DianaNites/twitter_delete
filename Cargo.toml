@@ -22,6 +22,7 @@ time = { version = "0.3.17", features = [
     "macros",
     "serde",
     "serde-human-readable",
+    "local-offset",
 ] }
 diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
 rand = "0.8.5"
