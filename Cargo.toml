@@ -25,6 +25,9 @@ time = { version = "0.3.17", features = [
 ] }
 url = "2.3.1"
 diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
+rand = "0.8.5"
+hmac = "0.12.1"
+sha1 = "0.10.5"
 
 [profile.dev.package."*"]
 opt-level = 2

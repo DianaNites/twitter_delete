@@ -17,6 +17,11 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use diesel::{prelude::*, SqliteConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use rand::{
+    distributions::{Alphanumeric, DistString},
+    prelude::*,
+    thread_rng,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use time::{
@@ -214,29 +219,77 @@ fn main() -> Result<()> {
         let t = tweets.filter(created_at.lt(&off));
 
         let found: Vec<MTweet> = t.load::<MTweet>(conn)?;
-        dbg!(found.first());
-        dbg!(found.len());
 
         {
             use req::{
                 blocking::{ClientBuilder, RequestBuilder},
                 header,
-                header::{HeaderMap, HeaderValue},
+                header::{HeaderMap, HeaderValue, AUTHORIZATION},
             };
             use reqwest as req;
+            fn create_auth(keys: &Access) -> String {
+                let mut rng = thread_rng();
+                let auth = &[
+                    //
+                    format!(r#"Oauth oauth_consumer_key="{}""#, keys.api_key),
+                    format!(
+                        r#"oauth_nonce="{}""#,
+                        Alphanumeric.sample_string(&mut rng, 32)
+                    ),
+                    format!(r#"oauth_signature="{}""#, {
+                        //
+                        ""
+                    }),
+                    r#"oauth_signature_method="HMAC-SHA1""#.to_string(),
+                    format!(
+                        r#"oauth_timestamp="{}""#,
+                        OffsetDateTime::now_utc().unix_timestamp()
+                    ),
+                    format!(r#"oauth_token="{}""#, keys.access_secret),
+                    r#"oauth_version="1.0""#.to_string(),
+                ];
+                let mut auth = auth.join(", ");
+                dbg!(&auth);
+                auth
+            }
+
+            let auth = create_auth(&keys);
+            panic!();
 
             let mut headers = HeaderMap::new();
+            let mut val = HeaderValue::from_str(&auth)?;
+            val.set_sensitive(true);
+            headers.insert(AUTHORIZATION, val);
 
             let mut client = ClientBuilder::new() //
                 .default_headers(headers)
                 .build()?;
-            // Check for already deleted tweets
 
-            // client.post(format!("{TWEET_LOOKUP_URL}"));
+            // Lookup tweets in the DB and mark them as deleted if they don't exist
+            let t = tweets.filter(deleted.eq(false)).load::<MTweet>(conn)?;
+            dbg!(t.len());
+            // Size of all tweet IDs and commas
+            // Tweet IDs are assumed to be 19 characters
+            // 100 chunks, 19 ID + 1 comma
+            let mut ids = String::with_capacity(100 * 20);
+            for tweet in t.chunks(100) {
+                ids.clear();
+                for t in tweet {
+                    ids.push_str(&t.id_str);
+                }
+                let res = client
+                    .post(TWEET_LOOKUP_URL)
+                    // .body(format!("id={ids}"))
+                    .body(ids)
+                    .send()?;
+                dbg!(&res.status());
+                dbg!(&res.text());
+                break;
+            }
         }
 
-        let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
-        dbg!(delete);
+        // let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
+        // dbg!(delete);
     };
 
     // let mut args = Args::parse();
