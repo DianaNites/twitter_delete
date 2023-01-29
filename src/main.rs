@@ -11,6 +11,7 @@
 use std::{
     fmt::Display,
     fs,
+    iter::once,
     path::{Path, PathBuf},
 };
 
@@ -270,7 +271,7 @@ fn main() -> Result<()> {
                 let mut sig = auth.clone();
                 sig.extend_from_slice(params);
                 sig.sort_by(|a, b| a.0.cmp(&b.0));
-                dbg!(&sig);
+
                 let mut sig_out = String::new();
                 for (k, v) in sig {
                     sig_out.push_str(&k);
@@ -280,7 +281,6 @@ fn main() -> Result<()> {
                 }
                 // Pop last &
                 sig_out.pop();
-                dbg!(&sig_out);
 
                 let mut sig_base = String::new();
                 sig_base.push_str(method.as_str());
@@ -288,13 +288,11 @@ fn main() -> Result<()> {
                 sig_base.push_str(&encode(base_url));
                 sig_base.push('&');
                 sig_base.push_str(&encode(&sig_out));
-                dbg!(&sig_base);
 
                 let mut key = String::new();
                 key.push_str(&keys.api_secret);
                 key.push('&');
                 key.push_str(&encode(&keys.access_secret));
-                dbg!(&key);
 
                 let mut mac: HmacSha1 = HmacSha1::new_from_slice(key.as_bytes()).unwrap();
                 mac.update(sig_base.as_bytes());
@@ -302,14 +300,28 @@ fn main() -> Result<()> {
 
                 let sig = STANDARD.encode(sig);
 
-                panic!();
+                let mut auth_out = String::new();
+                for (k, v) in auth
+                    .into_iter()
+                    .chain(once(("oauth_signature".to_string(), sig)))
+                {
+                    auth_out.push_str(&k);
+                    auth_out.push_str("=\"");
+                    auth_out.push_str(&v);
+                    auth_out.push('"');
+                    auth_out.push_str(", ");
+                }
+                // Pop last comma and space
+                auth_out.pop();
+                auth_out.pop();
+
+                auth_out
             }
 
             let mut client = ClientBuilder::new().build()?;
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
             let t = tweets.filter(deleted.eq(false)).load::<MTweet>(conn)?;
-            dbg!(t.len());
 
             // Size of all tweet IDs and commas
             // Tweet IDs are assumed to be 19 characters
