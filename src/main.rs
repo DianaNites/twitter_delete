@@ -5,6 +5,7 @@
     unused_mut,
     unused_variables,
     clippy::let_and_return,
+    clippy::redundant_clone,
     clippy::never_loop
 )]
 use std::{
@@ -221,53 +222,95 @@ fn main() -> Result<()> {
         let found: Vec<MTweet> = t.load::<MTweet>(conn)?;
 
         {
+            use base64::{engine::general_purpose::STANDARD, Engine as _};
+            use hmac::{Hmac, Mac};
             use req::{
                 blocking::{ClientBuilder, RequestBuilder},
                 header,
                 header::{HeaderMap, HeaderValue, AUTHORIZATION},
+                Method,
+                Url,
             };
             use reqwest as req;
-            fn create_auth(keys: &Access) -> String {
+            use sha1::Sha1;
+            use urlencoding::encode;
+
+            type HmacSha1 = Hmac<Sha1>;
+
+            fn create_auth(
+                keys: &Access,
+                base_url: &str,
+                method: Method,
+                params: &[(String, String)],
+            ) -> String {
                 let mut rng = thread_rng();
                 let auth = &[
                     //
-                    format!(r#"Oauth oauth_consumer_key="{}""#, keys.api_key),
-                    format!(
-                        r#"oauth_nonce="{}""#,
-                        Alphanumeric.sample_string(&mut rng, 32)
+                    ("Oauth oauth_consumer_key", &keys.api_key),
+                    ("oauth_nonce", &Alphanumeric.sample_string(&mut rng, 32)),
+                    ("oauth_signature_method", &"HMAC-SHA1".to_string()),
+                    (
+                        "oauth_timestamp",
+                        &OffsetDateTime::now_utc().unix_timestamp().to_string(),
                     ),
-                    format!(r#"oauth_signature="{}""#, {
-                        //
-                        ""
-                    }),
-                    r#"oauth_signature_method="HMAC-SHA1""#.to_string(),
-                    format!(
-                        r#"oauth_timestamp="{}""#,
-                        OffsetDateTime::now_utc().unix_timestamp()
-                    ),
-                    format!(r#"oauth_token="{}""#, keys.access_secret),
-                    r#"oauth_version="1.0""#.to_string(),
+                    ("oauth_token", &keys.access),
+                    ("oauth_version", &"1.0".to_string()),
                 ];
-                let mut auth = auth.join(", ");
-                dbg!(&auth);
-                auth
+                let mut auth: Vec<_> = auth
+                    .iter()
+                    .map(|(k, v)| {
+                        (
+                            //
+                            encode(k).into_owned(),
+                            encode(v).into_owned(),
+                        )
+                    })
+                    .collect();
+
+                let mut sig = auth.clone();
+                sig.extend_from_slice(params);
+                sig.sort_by(|a, b| a.0.cmp(&b.0));
+                dbg!(&sig);
+                let mut sig_out = String::new();
+                for (k, v) in sig {
+                    sig_out.push_str(&k);
+                    sig_out.push('=');
+                    sig_out.push_str(&v);
+                    sig_out.push('&');
+                }
+                // Pop last &
+                sig_out.pop();
+                dbg!(&sig_out);
+
+                let mut sig_base = String::new();
+                sig_base.push_str(method.as_str());
+                sig_base.push('&');
+                sig_base.push_str(&encode(base_url));
+                sig_base.push('&');
+                sig_base.push_str(&encode(&sig_out));
+                dbg!(&sig_base);
+
+                let mut key = String::new();
+                key.push_str(&keys.api_secret);
+                key.push('&');
+                key.push_str(&encode(&keys.access_secret));
+                dbg!(&key);
+
+                let mut mac: HmacSha1 = HmacSha1::new_from_slice(key.as_bytes()).unwrap();
+                mac.update(sig_base.as_bytes());
+                let sig = mac.finalize().into_bytes();
+
+                let sig = STANDARD.encode(sig);
+
+                panic!();
             }
 
-            let auth = create_auth(&keys);
-            panic!();
-
-            let mut headers = HeaderMap::new();
-            let mut val = HeaderValue::from_str(&auth)?;
-            val.set_sensitive(true);
-            headers.insert(AUTHORIZATION, val);
-
-            let mut client = ClientBuilder::new() //
-                .default_headers(headers)
-                .build()?;
+            let mut client = ClientBuilder::new().build()?;
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
             let t = tweets.filter(deleted.eq(false)).load::<MTweet>(conn)?;
             dbg!(t.len());
+
             // Size of all tweet IDs and commas
             // Tweet IDs are assumed to be 19 characters
             // 100 chunks, 19 ID + 1 comma
@@ -276,11 +319,29 @@ fn main() -> Result<()> {
                 ids.clear();
                 for t in tweet {
                     ids.push_str(&t.id_str);
+                    ids.push(',');
                 }
+                if tweet.len() > 1 {
+                    // Pop last comma
+                    ids.pop();
+                }
+
+                let body = format!("id={ids}");
                 let res = client
                     .post(TWEET_LOOKUP_URL)
-                    // .body(format!("id={ids}"))
-                    .body(ids)
+                    .header(
+                        AUTHORIZATION,
+                        create_auth(
+                            &keys,
+                            TWEET_LOOKUP_URL,
+                            Method::POST,
+                            &[
+                                //
+                                ("id".to_string(), ids.clone()),
+                            ],
+                        ),
+                    )
+                    .body(body)
                     .send()?;
                 dbg!(&res.status());
                 dbg!(&res.text());
