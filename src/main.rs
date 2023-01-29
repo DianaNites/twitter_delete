@@ -9,6 +9,7 @@
     clippy::never_loop
 )]
 use std::{
+    collections::HashMap,
     fmt::Display,
     fs,
     iter::once,
@@ -369,7 +370,9 @@ fn main() -> Result<()> {
                     .form(params)
                     .send()?;
                 dbg!(&res.status());
-                dbg!(&res.text());
+                let res: LookupResp = res.json()?;
+
+                dbg!(&res);
                 break;
             }
         }
@@ -380,4 +383,10 @@ fn main() -> Result<()> {
 
     // let mut args = Args::parse();
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct LookupResp {
+    id: HashMap<String, Option<Tweet>>,
 }
