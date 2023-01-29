@@ -228,7 +228,7 @@ fn main() -> Result<()> {
             use req::{
                 blocking::{ClientBuilder, RequestBuilder},
                 header,
-                header::{HeaderMap, HeaderValue, AUTHORIZATION},
+                header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
                 Method,
                 Url,
             };
@@ -238,6 +238,7 @@ fn main() -> Result<()> {
 
             type HmacSha1 = Hmac<Sha1>;
 
+            /// Params is not encoded
             fn create_auth(
                 keys: &Access,
                 base_url: &str,
@@ -264,7 +265,7 @@ fn main() -> Result<()> {
                     .collect();
                 auth.sort_by(|a, b| a.0.cmp(&b.0));
 
-                // Auth values used for generating the signature
+                // Percent encoded Auth values used for generating the signature
                 let mut sig = auth.clone();
                 // Includes parameters
                 sig.extend(
@@ -276,6 +277,7 @@ fn main() -> Result<()> {
                 sig.sort_by(|a, b| a.0.cmp(&b.0));
 
                 // Parameter string
+                // Sig is already percent encoded
                 let mut param_string = String::new();
                 for (k, v) in sig {
                     param_string.push_str(&k);
@@ -306,17 +308,17 @@ fn main() -> Result<()> {
                 let sig = mac.finalize().into_bytes();
 
                 let sig = STANDARD.encode(sig);
-                dbg!(&sig);
-                panic!();
 
+                // Final auth header string
+                // Everything is already percent encoded
                 let mut auth_out = String::from("Oauth ");
                 for (k, v) in auth.into_iter().chain(once((
                     "oauth_signature".to_string(),
                     encode(&sig).into_owned(),
                 ))) {
-                    auth_out.push_str(&encode(&k));
+                    auth_out.push_str(&k);
                     auth_out.push_str("=\"");
-                    auth_out.push_str(&encode(&v));
+                    auth_out.push_str(&v);
                     auth_out.push('"');
                     auth_out.push_str(", ");
                 }
@@ -347,7 +349,6 @@ fn main() -> Result<()> {
                     ids.pop();
                 }
 
-                let body = format!("id={ids}");
                 let res = client
                     .post(TWEET_LOOKUP_URL)
                     .header(
@@ -362,7 +363,7 @@ fn main() -> Result<()> {
                             ],
                         )),
                     )
-                    .body(body)
+                    .form(&[("id", ids.as_str())])
                     .send()?;
                 dbg!(&res.status());
                 dbg!(&res.text());
