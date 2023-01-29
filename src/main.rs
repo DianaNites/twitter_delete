@@ -129,7 +129,7 @@ fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
 
         let data: Vec<TweetObj> = from_str(&data[PREFIX.len()..])?;
         out.extend(data.into_iter().map(|t| t.tweet));
-        break;
+        // break;
     }
 
     Ok(out)
@@ -176,7 +176,7 @@ fn main() -> Result<()> {
 
     // Add tweets to db
     let added = diesel::insert_into(crate::schema::tweets::table)
-        .values(tweets)
+        .values(&tweets)
         .execute(&mut conn)?;
     println!("Loaded {added} tweets");
 
@@ -197,16 +197,25 @@ fn main() -> Result<()> {
             }
         })
     })?;
+
     let off = off.unix_timestamp();
-    dbg!(&off);
+
+    // Find all tweets older than the provided offset, delete them,
+    // and mark as deleted
 
     {
         use crate::schema::tweets::dsl::*;
-        let found: Vec<MTweet> = tweets
-            .filter(created_at.lt(&off))
-            .load::<MTweet>(&mut conn)?;
+
+        let t = tweets.filter(created_at.lt(&off));
+
+        let found: Vec<MTweet> = t.load::<MTweet>(&mut conn)?;
         dbg!(found.first());
         dbg!(found.len());
+
+        // TODO: Delete here
+
+        let delete = diesel::update(t).set(deleted.eq(true)).execute(&mut conn)?;
+        dbg!(delete);
     }
 
     // let mut args = Args::parse();
