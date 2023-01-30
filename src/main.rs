@@ -340,6 +340,7 @@ fn main() -> Result<()> {
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
             let t = tweets.filter(deleted.eq(false)).load::<MTweet>(conn)?;
+            dbg!(t.len());
 
             // Size of all tweet IDs and commas
             // Tweet IDs are assumed to be 19 characters
@@ -421,7 +422,7 @@ fn main() -> Result<()> {
                     for t in tweet {
                         if let Some(v) = res.id.get(&t.id_str) {
                             if v.is_none() {
-                                gone += diesel::update(tweets.filter(id_str.eq(&t.id_str)))
+                                gone += diesel::update(tweets.find(&t.id_str))
                                     .set(deleted.eq(true))
                                     .execute(conn)?;
                             }
@@ -431,6 +432,9 @@ fn main() -> Result<()> {
                 })?;
                 writeln!(&mut stdout, "Marked {gone} tweets as already deleted")?;
             }
+            dbg!("Deleted all tweets??");
+            dbg!(t.len());
+            dbg!(t.first());
         }
 
         // let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
