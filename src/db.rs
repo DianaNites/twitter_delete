@@ -16,9 +16,9 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 type ExistingDeleted = Filter<db::dsl::tweets, Eq<db::dsl::deleted, bool>>;
 type ExistingFilter = Filter<ExistingDeleted, Eq<db::dsl::checked, bool>>;
+type CreatedBeforeFilter = Filter<db::dsl::tweets, Lt<db::dsl::created_at, i64>>;
 
 pub type Existing = Order<ExistingFilter, Asc<db::dsl::id_str>>;
-type CreatedBeforeFilter = Filter<db::dsl::tweets, Lt<db::dsl::created_at, i64>>;
 pub type CreatedBefore = Order<CreatedBeforeFilter, Asc<db::dsl::id_str>>;
 
 /// Create or open a database at `db_path`
