@@ -19,7 +19,8 @@ type ExistingDeleted = Filter<db::dsl::tweets, Eq<db::dsl::deleted, bool>>;
 type ExistingFilter = Filter<ExistingDeleted, Eq<db::dsl::checked, bool>>;
 
 pub type Existing = Order<ExistingFilter, Asc<db::dsl::id_str>>;
-pub type CreatedBefore = Filter<db::dsl::tweets, Lt<db::dsl::created_at, i64>>;
+type CreatedBeforeFilter = Filter<db::dsl::tweets, Lt<db::dsl::created_at, i64>>;
+pub type CreatedBefore = Order<CreatedBeforeFilter, Asc<db::dsl::id_str>>;
 
 /// Create or open a database at `db_path`
 ///
@@ -53,10 +54,12 @@ pub fn count_tweets(conn: &mut SqliteConnection) -> Result<i64> {
 
 /// Gets all tweets created before `utc`
 ///
-/// Uses UTC unix time
+/// Uses UTC unix time.
+///
+/// In ascending/alphabetical/lexicographical order
 pub fn created_before(utc: i64) -> CreatedBefore {
     use db::dsl::*;
-    tweets.filter(created_at.lt(utc))
+    tweets.filter(created_at.lt(utc)).order(id_str.asc())
 }
 
 /// Gets all existing, not marked as deleted, tweets, that haven't been checked
@@ -72,22 +75,33 @@ pub fn existing() -> Existing {
 }
 
 /// Mark `tweets` as checked, returning how many were marked
+///
+/// This all occurs in a single transaction.
+///
+/// It is a logic error for `tweets` not to be in sorted order
 pub fn checked<'a>(
     conn: &mut SqliteConnection,
     tweets: impl Iterator<Item = &'a str>,
 ) -> Result<usize> {
-    let mut gone = 0;
-    // TODO: use between?
-    for tweet in tweets {
-        use db::dsl::*;
-        diesel::update(tweets.find(tweet))
-            .set(checked.eq(true))
-            .execute(conn)?;
-    }
+    let gone = conn.transaction::<_, DieselError, _>(|conn| {
+        let mut gone = 0;
+        // TODO: use between?
+        for tweet in tweets {
+            use db::dsl::*;
+            diesel::update(tweets.find(tweet))
+                .set(checked.eq(true))
+                .execute(conn)?;
+        }
+        Ok(gone)
+    })?;
     Ok(gone)
 }
 
 /// Mark `tweets` as deleted, returning how many were marked
+///
+/// This all occurs in a single transaction.
+///
+/// It is a logic error for `tweets` not to be in sorted order
 pub fn deleted<'a>(
     conn: &mut SqliteConnection,
     tweets: impl Iterator<Item = &'a str>,

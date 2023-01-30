@@ -168,13 +168,15 @@ fn main() -> Result<()> {
                     let res: LookupResp = res.json()?;
 
                     let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
-                        let mut gone = 0;
-                        for (k, v) in &res.id {
-                            if v.is_none() {
-                                // FIXME: Terrible hack
-                                gone += deleted(conn, [k.as_str()].into_iter())?;
-                            }
-                        }
+                        let mut ids: Vec<&str> = res
+                            .id
+                            .iter()
+                            .filter(|(_, v)| v.is_none())
+                            .map(|(k, v)| k.as_str())
+                            .collect();
+                        // Make sure its sorted
+                        ids.sort();
+                        let gone = deleted(conn, ids.iter().copied())?;
                         Ok(gone)
                     })?;
                     println!("Marked {gone} tweets as already deleted from twitter");
