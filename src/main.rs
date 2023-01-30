@@ -20,7 +20,6 @@ use std::{
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use diesel::{prelude::*, SqliteConnection};
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use rand::{
     distributions::{Alphanumeric, DistString},
     prelude::*,
@@ -42,6 +41,7 @@ use time::{
 };
 
 use crate::{
+    db::count_tweets,
     models::Tweet as MTweet,
     twitter::{collect_tweets, create_auth},
 };
@@ -58,8 +58,6 @@ static ACCESS: &str = include_str!("../scratch/access.json");
 static TWITTER_DATE: &[FormatItem] = format_description!(
     "[weekday repr:short case_sensitive:false] [month repr:short] [day] [hour]:[minute]:[second] +0000 [year]"
 );
-
-const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// Lookup 100 tweet IDs at a time
 ///
@@ -97,21 +95,18 @@ fn main() -> Result<()> {
     let config_path = Path::new(&home).join(".config/twitter_delete");
     let db_path = config_path.join("tweets.db");
 
-    let db_path = db_path
-        .to_str()
-        .ok_or_else(|| anyhow!("Invalid UTF-8 in PATH"))?;
     fs::create_dir_all(config_path)?;
     let keys: Access = from_str(ACCESS)?;
 
     let tweets = collect_tweets(&keys.test_path)?;
 
-    let tweets: Vec<_> = tweets
+    let tweets: Vec<MTweet> = tweets
         .into_iter()
         .map(|tw| {
             // Unwrap should only fail if twitter archive is bad/evil
             // Also `?` cant be used here
             MTweet::new(
-                tw.id_str.parse().unwrap(),
+                tw.id_str,
                 tw.retweets.parse().unwrap(),
                 tw.likes.parse().unwrap(),
                 PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
@@ -122,30 +117,25 @@ fn main() -> Result<()> {
         })
         .collect();
 
-    let mut conn = SqliteConnection::establish(db_path)?;
-
-    conn.run_pending_migrations(MIGRATIONS)
-        .map_err(|e| anyhow!(e))?;
+    let mut conn = crate::db::create_db(&db_path)?;
 
     // Add tweets to db, ignoring ones already there
-    let added = diesel::insert_or_ignore_into(crate::schema::tweets::table)
-        .values(&tweets)
-        .execute(&mut conn)?;
+    let added = db::add_tweets(&mut conn, &tweets)?;
 
-    println!("Loaded {added} tweets. Total tweets {}", {
-        use crate::schema::tweets::dsl::*;
-        tweets.count().get_result::<i64>(&mut conn)?
-    });
+    println!(
+        "Loaded {added} tweets. Total tweets {}",
+        count_tweets(&mut conn)?
+    );
 
-    // NOTE: Test select tweets older than 30 days
-    let off = Duration::days(120 * 300000);
+    // NOTE: Test select tweets older than 360 days
+    // My test archive is already older than 30 days lol
+    let off = Duration::days(360);
     let off = OffsetDateTime::now_utc().checked_sub(off).ok_or_else(|| {
         anyhow!(
             "Specified offset of {} ({off}) is too far in the past",
             util::human_dur(off),
         )
     })?;
-
     let off = off.unix_timestamp();
 
     // Find all tweets older than the provided offset, delete them,
