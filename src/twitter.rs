@@ -6,6 +6,8 @@ use std::{
     io::{stdout, Write},
     iter::once,
     path::{Path, PathBuf},
+    thread::sleep,
+    time::Duration as StdDuration,
 };
 
 use anyhow::{anyhow, Result};
@@ -266,46 +268,53 @@ pub fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
 /// `tweets` is a list of tweet IDs to lookup
 ///
 /// Note that this twitter API can only look up tweets in batches of up to 100,
-/// so this will call `on_chunk` for each chunk.
+/// so this will call `on_chunk` for each successfully processed chunk.
 ///
-/// Calls `on_limit` whenever a rate limit is hit
+/// Calls `on_limit` whenever a rate limit is hit.
 pub fn lookup_tweets<'a, OnLimit, OnChunk>(
     client: &Client,
     keys: &Access,
     tweets: impl Iterator<Item = &'a str>,
     on_limit: OnLimit,
     on_chunk: OnChunk,
-) -> Result<Response>
+) -> Result<()>
 where
     OnLimit: FnMut(RateLimit, &Response) -> Result<()>,
     OnChunk: FnMut(Response) -> Result<()>,
 {
+    let mut on_limit = on_limit;
+    let mut on_chunk = on_chunk;
     let mut tweets = tweets;
-    // FIXME: URGENT. Chunks. Fuck.
+    let mut tweets = tweets.by_ref();
 
-    // FIXME: Inefficient.
-    let ids = tweets.collect::<Vec<&str>>().join(",");
-    let params = &[
-        //
-        ("id", ids.as_str()),
-        ("map", "true"),
-    ];
+    loop {
+        let ids = tweets.take(100).collect::<Vec<&str>>().join(",");
+        if ids.is_empty() {
+            break;
+        }
+        let params = &[
+            //
+            ("id", ids.as_str()),
+            ("map", "true"),
+        ];
 
-    let req = client
-        .post(TWEET_LOOKUP_URL)
-        .header(
-            AUTHORIZATION,
-            create_auth(
-                keys,
-                TWEET_LOOKUP_URL,
-                Method::POST,
-                &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
-            ),
-        )
-        .form(params);
-    let res = rate_limit(&req, on_limit)?;
+        let req = client
+            .post(TWEET_LOOKUP_URL)
+            .header(
+                AUTHORIZATION,
+                create_auth(
+                    keys,
+                    TWEET_LOOKUP_URL,
+                    Method::POST,
+                    &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+                ),
+            )
+            .form(params);
+        let res = rate_limit(&req, &mut on_limit)?;
+        on_chunk(res)?;
+    }
 
-    Ok(res)
+    Ok(())
 }
 
 /// Handles rate limiting with the Twitter API
@@ -339,20 +348,18 @@ fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
                 let secs: u64 = r.parse()?;
                 on_limit(RateLimit::Until(secs), &res)?;
 
-                let dur = std::time::Duration::from_secs(secs);
+                let dur = StdDuration::from_secs(secs);
                 // Default to 15 minutes
                 let secs = (secs as i64)
                     .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
                     .unwrap_or(60 * 15);
-                let dur = std::time::Duration::from_secs(secs as u64);
-                std::thread::sleep(dur);
+                sleep(StdDuration::from_secs(secs as u64));
             } else {
                 on_limit(RateLimit::Unknown, &res)?;
 
                 // Try waiting 15 minutes if there was no reset
                 // header
-                let dur = std::time::Duration::from_secs(60 * 15);
-                std::thread::sleep(dur);
+                sleep(StdDuration::from_secs(60 * 15));
             }
         } else if res.status().is_client_error() || res.status().is_server_error() {
             return Err(anyhow!("Encountered HTTP error {}", res.status()));

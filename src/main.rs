@@ -142,7 +142,7 @@ fn main() -> Result<()> {
             let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
             dbg!(existing_tweets.len());
 
-            let res = lookup_tweets(
+            lookup_tweets(
                 &client,
                 &keys,
                 existing_tweets.iter().map(|f| f.id_str.as_str()),
