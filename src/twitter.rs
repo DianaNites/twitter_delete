@@ -66,11 +66,12 @@ pub struct Tweet {
     pub id_str: String,
 
     /// Number of retweets
-    pub retweet_count: String,
+    #[serde(rename = "retweet_count")]
+    pub retweets: String,
 
     /// Number of likes
     #[serde(rename = "favorite_count")]
-    pub like_count: String,
+    pub likes: String,
 
     /// Time of tweet
     ///

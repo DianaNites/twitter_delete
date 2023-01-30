@@ -111,8 +111,8 @@ fn main() -> Result<()> {
             // Also `?` cant be used here
             MTweet::new(
                 tw.id_str.parse().unwrap(),
-                tw.retweet_count.parse().unwrap(),
-                tw.like_count.parse().unwrap(),
+                tw.retweets.parse().unwrap(),
+                tw.likes.parse().unwrap(),
                 PrimitiveDateTime::parse(&tw.created_at, TWITTER_DATE)
                     .unwrap()
                     .assume_utc()
