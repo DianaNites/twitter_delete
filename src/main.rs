@@ -43,7 +43,7 @@ use time::{
 use crate::{
     db::{count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
-    twitter::{collect_tweets, create_auth},
+    twitter::{collect_tweets, create_auth, lookup_tweets, RateLimit},
 };
 
 mod config;
@@ -58,18 +58,6 @@ static ACCESS: &str = include_str!("../scratch/access.json");
 static TWITTER_DATE: &[FormatItem] = format_description!(
     "[weekday repr:short case_sensitive:false] [month repr:short] [day] [hour]:[minute]:[second] +0000 [year]"
 );
-
-/// Lookup 100 tweet IDs at a time
-///
-/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-lookup
-const TWEET_LOOKUP_URL: &str = "https://api.twitter.com/1.1/statuses/lookup.json";
-
-/// Delete a tweet
-///
-/// Ends in `{id}.json`
-///
-/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id
-const TWEET_DESTROY_URL: &str = "https://api.twitter.com/1.1/statuses/destroy/";
 
 /// Parse tweets from your twitter archive
 #[derive(Parser, Debug)]
@@ -153,97 +141,48 @@ fn main() -> Result<()> {
             // Skips tweets we have already checked
             let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
             dbg!(existing_tweets.len());
-            let chunks = existing_tweets.chunks(100);
 
-            // Size of all tweet IDs and commas
-            // Tweet IDs are assumed to be 19 characters
-            // 100 chunks, 19 ID + 1 comma
-            let mut ids = String::with_capacity(100 * 20);
+            let res = lookup_tweets(
+                &client,
+                &keys,
+                existing_tweets.iter().map(|f| f.id_str.as_str()),
+                |limit, res| {
+                    let secs = match limit {
+                        RateLimit::Until(secs) => secs,
+                        RateLimit::Unknown => 60 * 15,
+                    } as i64;
 
-            for tweet in chunks {
-                ids.clear();
-                for t in tweet {
-                    ids.push_str(&t.id_str);
-                    ids.push(',');
-                }
-                if tweet.len() > 1 {
-                    // Pop last comma
-                    ids.pop();
-                }
+                    eprintln!(
+                        "Rate limited, waiting until UTC {} ({secs} seconds)",
+                        (OffsetDateTime::now_utc() + Duration::seconds(secs))
+                            // .to_offset(UtcOffset::current_local_offset()?)
+                            .time()
+                            .format(format_description!(
+                                "[hour repr:12]:[minute]:[second] [period]"
+                            ))?
+                    );
 
-                let params = &[
-                    //
-                    ("id", ids.as_str()),
-                    ("map", "true"),
-                ];
+                    Ok(())
+                },
+                |res| {
+                    let res: LookupResp = res.json()?;
 
-                let res = loop {
-                    let r = client
-                        .post(TWEET_LOOKUP_URL)
-                        .header(
-                            AUTHORIZATION,
-                            create_auth(
-                                &keys,
-                                TWEET_LOOKUP_URL,
-                                Method::POST,
-                                &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
-                            ),
-                        )
-                        .form(params)
-                        .send()?;
-                    if r.status().is_success() {
-                        break r;
-                    } else if r.status() == StatusCode::TOO_MANY_REQUESTS {
-                        if let Some(r) = r
-                            .headers()
-                            .get("x-rate-limit-reset")
-                            .map(|f| f.to_str())
-                            .transpose()?
-                        {
-                            let secs: u64 = r.parse()?;
-                            let dur = std::time::Duration::from_secs(secs);
-                            // Default to 15 minutes
-                            let secs = (secs as i64)
-                                .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
-                                .unwrap_or(60 * 15);
-                            let dur = std::time::Duration::from_secs(secs as u64);
-                            eprintln!(
-                                "Rate limited, waiting until UTC {} ({secs} seconds)",
-                                (OffsetDateTime::now_utc() + Duration::seconds(secs))
-                                    // .to_offset(UtcOffset::current_local_offset()?)
-                                    .time()
-                                    .format(format_description!(
-                                        "[hour repr:12]:[minute]:[second] [period]"
-                                    ))?
-                            );
-                            std::thread::sleep(dur);
-                        } else {
-                            // Try waiting 15 minutes if there was no reset
-                            // header
-                            eprintln!("Rate limited, waiting 15 minutes");
-                            let dur = std::time::Duration::from_secs(60 * 15);
-                            std::thread::sleep(dur);
-                        }
-                    } else if r.status().is_client_error() || r.status().is_server_error() {
-                        return Err(anyhow!("Encountered HTTP error {}", r.status()));
-                    }
-                };
-                let res: LookupResp = res.json()?;
-
-                let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
-                    let mut gone = 0;
-                    for t in tweet {
-                        if let Some(v) = res.id.get(&t.id_str) {
+                    let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
+                        let mut gone = 0;
+                        for (k, v) in &res.id {
                             if v.is_none() {
                                 // FIXME: Terrible hack
-                                gone += deleted(conn, &[t.clone()])?;
+                                gone += deleted(conn, [k.as_str()].into_iter())?;
                             }
                         }
-                    }
-                    Ok(gone)
-                })?;
-                println!("Marked {gone} tweets as already deleted");
-            }
+                        Ok(gone)
+                    })?;
+                    println!("Marked {gone} tweets as already deleted from twitter");
+
+                    Ok(())
+                },
+            )?;
+
             // For some reason when I leave this running it keeps ending, but running it
             // again finds more??
             // Is there a limit to how much can be returned by filter at once?

@@ -20,7 +20,7 @@ use rand::{
     thread_rng,
 };
 use req::{
-    blocking::{ClientBuilder, RequestBuilder},
+    blocking::{Client, ClientBuilder, RequestBuilder, Response},
     header,
     header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
     Method,
@@ -48,10 +48,36 @@ use crate::Access;
 
 type HmacSha1 = Hmac<Sha1>;
 
+/// Lookup 100 tweet IDs at a time
+///
+/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-lookup
+pub const TWEET_LOOKUP_URL: &str = "https://api.twitter.com/1.1/statuses/lookup.json";
+
+/// Delete a tweet
+///
+/// Ends in `{id}.json`
+///
+/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id
+pub const TWEET_DESTROY_URL: &str = "https://api.twitter.com/1.1/statuses/destroy/";
+
 /// Twitter tweet object. Internal, useless.
 #[derive(Debug, Deserialize)]
 struct TweetObj {
     tweet: Tweet,
+}
+
+/// Indicates the rate limit response from the server
+#[derive(Debug, Clone, Copy)]
+pub enum RateLimit {
+    /// Represents that the rate limit resets at this time in the future
+    ///
+    /// UTC Unix time
+    Until(u64),
+
+    /// Represents that it is unknown when the rate limit resets.
+    ///
+    /// This is handled by defaulting to 15 minutes
+    Unknown,
 }
 
 /// A Tweet in the twitter archive.
@@ -233,4 +259,105 @@ pub fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
     }
 
     Ok(out)
+}
+
+/// Lookup `tweets` on twitter.
+///
+/// `tweets` is a list of tweet IDs to lookup
+///
+/// Note that this twitter API can only look up tweets in batches of up to 100,
+/// so this will call `on_chunk` for each chunk.
+///
+/// Calls `on_limit` whenever a rate limit is hit
+pub fn lookup_tweets<'a, OnLimit, OnChunk>(
+    client: &Client,
+    keys: &Access,
+    tweets: impl Iterator<Item = &'a str>,
+    on_limit: OnLimit,
+    on_chunk: OnChunk,
+) -> Result<Response>
+where
+    OnLimit: FnMut(RateLimit, &Response) -> Result<()>,
+    OnChunk: FnMut(Response) -> Result<()>,
+{
+    let mut tweets = tweets;
+    // FIXME: URGENT. Chunks. Fuck.
+
+    // FIXME: Inefficient.
+    let ids = tweets.collect::<Vec<&str>>().join(",");
+    let params = &[
+        //
+        ("id", ids.as_str()),
+        ("map", "true"),
+    ];
+
+    let req = client
+        .post(TWEET_LOOKUP_URL)
+        .header(
+            AUTHORIZATION,
+            create_auth(
+                keys,
+                TWEET_LOOKUP_URL,
+                Method::POST,
+                &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+            ),
+        )
+        .form(params);
+    let res = rate_limit(&req, on_limit)?;
+
+    Ok(res)
+}
+
+/// Handles rate limiting with the Twitter API
+///
+/// Sends request `req`, and if a rate limit error is returned,
+/// waits either until the time specified by twitter, or 15 minutes,
+/// and then repeats the request.
+///
+/// Before waiting, calls `on_limit`. If this returns an error, it is returned.
+fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
+    req: &RequestBuilder,
+    on_limit: F,
+) -> Result<Response> {
+    let mut on_limit = on_limit;
+
+    let res = loop {
+        let req = req
+            .try_clone()
+            .expect("BUG: Failed to clone RequestBuilder");
+
+        let res = req.send()?;
+        if res.status().is_success() {
+            break res;
+        } else if res.status() == StatusCode::TOO_MANY_REQUESTS {
+            if let Some(r) = res
+                .headers()
+                .get("x-rate-limit-reset")
+                .map(|f| f.to_str())
+                .transpose()?
+            {
+                let secs: u64 = r.parse()?;
+                on_limit(RateLimit::Until(secs), &res)?;
+
+                let dur = std::time::Duration::from_secs(secs);
+                // Default to 15 minutes
+                let secs = (secs as i64)
+                    .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
+                    .unwrap_or(60 * 15);
+                let dur = std::time::Duration::from_secs(secs as u64);
+                std::thread::sleep(dur);
+            } else {
+                on_limit(RateLimit::Unknown, &res)?;
+
+                // Try waiting 15 minutes if there was no reset
+                // header
+                let dur = std::time::Duration::from_secs(60 * 15);
+                std::thread::sleep(dur);
+            }
+        } else if res.status().is_client_error() || res.status().is_server_error() {
+            return Err(anyhow!("Encountered HTTP error {}", res.status()));
+        }
+    };
+
+    Ok(res)
 }

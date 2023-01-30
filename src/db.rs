@@ -72,12 +72,15 @@ pub fn existing() -> Existing {
 }
 
 /// Mark `tweets` as checked, returning how many were marked
-pub fn checked(conn: &mut SqliteConnection, tweets: &[Tweet]) -> Result<usize> {
+pub fn checked<'a>(
+    conn: &mut SqliteConnection,
+    tweets: impl Iterator<Item = &'a str>,
+) -> Result<usize> {
     let mut gone = 0;
     // TODO: use between?
     for tweet in tweets {
         use db::dsl::*;
-        diesel::update(tweets.find(&tweet.id_str))
+        diesel::update(tweets.find(tweet))
             .set(checked.eq(true))
             .execute(conn)?;
     }
@@ -85,13 +88,16 @@ pub fn checked(conn: &mut SqliteConnection, tweets: &[Tweet]) -> Result<usize> {
 }
 
 /// Mark `tweets` as deleted, returning how many were marked
-pub fn deleted(conn: &mut SqliteConnection, tweets: &[Tweet]) -> Result<usize> {
+pub fn deleted<'a>(
+    conn: &mut SqliteConnection,
+    tweets: impl Iterator<Item = &'a str>,
+) -> Result<usize> {
     let gone = conn.transaction::<_, DieselError, _>(|conn| {
         let mut gone = 0;
         // TODO: use between?
         for tweet in tweets {
             use db::dsl::*;
-            diesel::update(tweets.find(&tweet.id_str))
+            diesel::update(tweets.find(tweet))
                 .set(deleted.eq(true))
                 .execute(conn)?;
         }
