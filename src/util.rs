@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use time::{ext::NumericalDuration, Duration, OffsetDateTime};
+use time::Duration;
 
 /// Get a human readable representation of the [`Duration`] `dur`, as whole
 /// units

@@ -10,40 +10,28 @@
 )]
 use std::{
     collections::HashMap,
-    fmt::Display,
     fs,
-    io::stdout,
-    iter::once,
     path::{Path, PathBuf},
 };
 
 use anyhow::{anyhow, Result};
 use clap::Parser;
-use diesel::{prelude::*, SqliteConnection};
-use rand::{
-    distributions::{Alphanumeric, DistString},
-    prelude::*,
-    thread_rng,
-};
-use reqwest::{blocking::ClientBuilder, header::AUTHORIZATION, Method, StatusCode};
-use serde::{Deserialize, Serialize};
+use diesel::prelude::*;
+use reqwest::blocking::ClientBuilder;
+use serde::Deserialize;
 use serde_json::from_str;
 use time::{
-    format_description::{
-        well_known::{iso8601::Config, Iso8601},
-        FormatItem,
-    },
+    format_description::FormatItem,
     macros::format_description,
     Duration,
     OffsetDateTime,
     PrimitiveDateTime,
-    UtcOffset,
 };
 
 use crate::{
     db::{count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
-    twitter::{collect_tweets, create_auth, lookup_tweets, RateLimit},
+    twitter::{collect_tweets, lookup_tweets, RateLimit},
 };
 
 mod config;
@@ -135,7 +123,7 @@ fn main() -> Result<()> {
         let to_process: Vec<MTweet> = created_before(off).load::<MTweet>(conn)?;
 
         {
-            let mut client = ClientBuilder::new().build()?;
+            let client = ClientBuilder::new().build()?;
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
             // Skips tweets we have already checked
@@ -146,7 +134,7 @@ fn main() -> Result<()> {
                 &client,
                 &keys,
                 existing_tweets.iter().map(|f| f.id_str.as_str()),
-                |limit, res| {
+                |limit, _res| {
                     let secs = match limit {
                         RateLimit::Until(secs) => secs,
                         RateLimit::Unknown => 60 * 15,
@@ -172,7 +160,7 @@ fn main() -> Result<()> {
                             .id
                             .iter()
                             .filter(|(_, v)| v.is_none())
-                            .map(|(k, v)| k.as_str())
+                            .map(|(k, _)| k.as_str())
                             .collect();
                         // Make sure its sorted
                         ids.sort();

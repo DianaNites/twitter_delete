@@ -4,10 +4,9 @@ use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use diesel::{
-    dsl::{Asc, Desc, Eq, Filter, Lt, Order},
-    prelude::{sql_function, *},
+    dsl::{Asc, Eq, Filter, Lt, Order},
+    prelude::*,
     result::Error as DieselError,
-    sql_types::{BigInt, Integer, Text},
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
@@ -88,7 +87,7 @@ pub fn checked<'a>(
         // TODO: use between?
         for tweet in tweets {
             use db::dsl::*;
-            diesel::update(tweets.find(tweet))
+            gone += diesel::update(tweets.find(tweet))
                 .set(checked.eq(true))
                 .execute(conn)?;
         }
@@ -111,7 +110,7 @@ pub fn deleted<'a>(
         // TODO: use between?
         for tweet in tweets {
             use db::dsl::*;
-            diesel::update(tweets.find(tweet))
+            gone += diesel::update(tweets.find(tweet))
                 .set(deleted.eq(true))
                 .execute(conn)?;
         }

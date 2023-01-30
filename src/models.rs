@@ -1,16 +1,6 @@
 use anyhow::anyhow;
-use diesel::{
-    backend::Backend,
-    deserialize::FromSql,
-    prelude::*,
-    serialize::{self, IsNull, Output, ToSql},
-    sql_types::{BigInt, Integer, Text},
-    sqlite::Sqlite,
-    AsExpression,
-    FromSqlRow,
-    IntoSql,
-};
-use time::{OffsetDateTime, PrimitiveDateTime};
+use diesel::prelude::*;
+use time::OffsetDateTime;
 
 use crate::schema::tweets;
 

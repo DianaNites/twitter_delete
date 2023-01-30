@@ -1,49 +1,24 @@
 //! Handles stuff related to interacting with the twitter API
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    fs,
-    io::{stdout, Write},
-    iter::once,
-    path::{Path, PathBuf},
-    thread::sleep,
-    time::Duration as StdDuration,
-};
+use std::{fs, iter::once, path::Path, thread::sleep, time::Duration as StdDuration};
 
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use clap::Parser;
-use diesel::{prelude::*, SqliteConnection};
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use hmac::{Hmac, Mac};
 use rand::{
     distributions::{Alphanumeric, DistString},
-    prelude::*,
     thread_rng,
 };
 use req::{
-    blocking::{Client, ClientBuilder, RequestBuilder, Response},
-    header,
-    header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
+    blocking::{Client, RequestBuilder, Response},
+    header::AUTHORIZATION,
     Method,
     StatusCode,
-    Url,
 };
 use reqwest as req;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::from_str;
 use sha1::Sha1;
-use time::{
-    format_description::{
-        well_known::{iso8601::Config, Iso8601},
-        FormatItem,
-    },
-    macros::format_description,
-    Duration,
-    OffsetDateTime,
-    PrimitiveDateTime,
-    UtcOffset,
-};
+use time::OffsetDateTime;
 use urlencoding::encode;
 
 use crate::Access;
@@ -129,7 +104,7 @@ impl Tweet {
 /// Create twitter authentication headers
 ///
 /// Params is not percent encoded
-pub fn create_auth(
+fn create_auth(
     keys: &Access,
     base_url: &str,
     method: Method,
@@ -285,7 +260,7 @@ where
     let mut on_limit = on_limit;
     let mut on_chunk = on_chunk;
     let mut tweets = tweets;
-    let mut tweets = tweets.by_ref();
+    let tweets = tweets.by_ref();
 
     loop {
         let ids = tweets.take(100).collect::<Vec<&str>>().join(",");
@@ -348,7 +323,6 @@ fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
                 let secs: u64 = r.parse()?;
                 on_limit(RateLimit::Until(secs), &res)?;
 
-                let dur = StdDuration::from_secs(secs);
                 // Default to 15 minutes
                 let secs = (secs as i64)
                     .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
