@@ -191,7 +191,7 @@ pub fn create_auth(
     auth_out
 }
 
-/// Collect tweets from the twitter archive
+/// Collect tweets from the twitter archive. Returns ALL found tweets.
 ///
 /// `path` is the path to the archive, and tweets are expected to exist at
 /// `data/tweets.js` and `data/tweets-partN.js`.

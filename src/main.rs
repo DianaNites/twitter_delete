@@ -51,6 +51,7 @@ mod db;
 mod models;
 mod schema;
 mod twitter;
+mod util;
 
 static ACCESS: &str = include_str!("../scratch/access.json");
 
@@ -137,21 +138,12 @@ fn main() -> Result<()> {
     });
 
     // NOTE: Test select tweets older than 30 days
-    let off = Duration::days(120);
+    let off = Duration::days(120 * 300000);
     let off = OffsetDateTime::now_utc().checked_sub(off).ok_or_else(|| {
-        anyhow!("Specified offset of {} is too far in the past", {
-            if off.whole_weeks() > 52 {
-                format!("{} years", off.whole_weeks() / 52)
-            } else if off.whole_weeks() > 1 {
-                format!("{} weeks", off.whole_weeks())
-            } else if off.whole_days() > 1 {
-                format!("{} days", off.whole_days())
-            } else if off.whole_hours() > 1 {
-                format!("{} hours", off.whole_hours())
-            } else {
-                format!("{off}")
-            }
-        })
+        anyhow!(
+            "Specified offset of {} ({off}) is too far in the past",
+            util::human_dur(off),
+        )
     })?;
 
     let off = off.unix_timestamp();
