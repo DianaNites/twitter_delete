@@ -117,81 +117,79 @@ fn main() -> Result<()> {
     // Find all tweets older than the provided offset, delete them,
     // and mark as deleted
 
-    {
-        let conn = &mut conn;
+    let conn = &mut conn;
 
-        let to_process: Vec<MTweet> = created_before(off).load::<MTweet>(conn)?;
+    let to_process: Vec<MTweet> = created_before(off).load::<MTweet>(conn)?;
 
-        {
-            let client = ClientBuilder::new().build()?;
+    let client = ClientBuilder::new().build()?;
 
-            // Lookup tweets in the DB and mark them as deleted if they don't exist
-            // Skips tweets we have already checked
-            let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
-            dbg!(existing_tweets.len());
+    // Lookup tweets in the DB and mark them as deleted if they don't exist
+    // Skips tweets we have already checked
+    // FIXME: This should use created_before..
+    let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
+    println!(
+        "Checking whether {} tweets were already deleted, out of {} total tweets to process",
+        existing_tweets.len(),
+        to_process.len()
+    );
 
-            lookup_tweets(
-                &client,
-                &keys,
-                existing_tweets.iter().map(|f| f.id_str.as_str()),
-                |limit, _res| {
-                    let secs = match limit {
-                        RateLimit::Until(secs) => secs,
-                        RateLimit::Unknown => 60 * 15,
-                    } as i64;
+    lookup_tweets(
+        &client,
+        &keys,
+        existing_tweets.iter().map(|f| f.id_str.as_str()),
+        |limit, _res| {
+            let secs = match limit {
+                RateLimit::Until(secs) => secs,
+                RateLimit::Unknown => 60 * 15,
+            } as i64;
 
-                    eprintln!(
-                        "Rate limited, waiting until UTC {} ({secs} seconds)",
-                        (OffsetDateTime::now_utc() + Duration::seconds(secs))
-                            // .to_offset(UtcOffset::current_local_offset()?)
-                            .time()
-                            .format(format_description!(
-                                "[hour repr:12]:[minute]:[second] [period]"
-                            ))?
-                    );
+            eprintln!(
+                "Rate limited, waiting until UTC {} ({secs} seconds)",
+                (OffsetDateTime::now_utc() + Duration::seconds(secs))
+                    // .to_offset(UtcOffset::current_local_offset()?)
+                    .time()
+                    .format(format_description!(
+                        "[hour repr:12]:[minute]:[second] [period]"
+                    ))?
+            );
 
-                    Ok(())
-                },
-                |res| {
-                    let res: LookupResp = res.json()?;
+            Ok(())
+        },
+        |res| {
+            let res: LookupResp = res.json()?;
 
-                    let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
-                        let mut ids: Vec<&str> = res
-                            .id
-                            .iter()
-                            .filter(|(_, v)| v.is_none())
-                            .map(|(k, _)| k.as_str())
-                            .collect();
-                        // Make sure its sorted
-                        ids.sort();
-                        let gone = deleted(conn, ids.iter().copied())?;
-                        Ok(gone)
-                    })?;
-                    println!("Marked {gone} tweets as already deleted from twitter");
+            let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
+                let mut ids: Vec<&str> = res
+                    .id
+                    .iter()
+                    .filter(|(_, v)| v.is_none())
+                    .map(|(k, _)| k.as_str())
+                    .collect();
+                // Make sure its sorted
+                ids.sort();
+                let gone = deleted(conn, ids.iter().copied())?;
+                Ok(gone)
+            })?;
+            println!("Marked {gone} tweets as already deleted from twitter");
 
-                    Ok(())
-                },
-            )?;
+            Ok(())
+        },
+    )?;
 
-            // For some reason when I leave this running it keeps ending, but running it
-            // again finds more??
-            // Is there a limit to how much can be returned by filter at once?
-            // FUCK ohhh is it because, duh, not all tweets in my test archive actually
-            // *are* deleted So of course rerunning it returns the same ones
-            // But wait, then why does rerunning it sometimes still mark tweets as deleted..
-            // twitter api limitation where it doesn't distinguish between deleted and
-            // unavailable properly?
-            // TODO: Maybe don't even bother with this and just try deleting them
-            // in the first place, ignoring errors if they dont exist?
-            // Plus delete has no rate limit
-            dbg!("Deleted all tweets??");
-            dbg!(existing_tweets.len());
-            dbg!(existing_tweets.first());
-        }
-
-        // let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
-        // dbg!(delete);
-    };
+    // For some reason when I leave this running it keeps ending, but running it
+    // again finds more??
+    // Is there a limit to how much can be returned by filter at once?
+    // FUCK ohhh is it because, duh, not all tweets in my test archive actually
+    // *are* deleted So of course rerunning it returns the same ones
+    // But wait, then why does rerunning it sometimes still mark tweets as deleted..
+    // twitter api limitation where it doesn't distinguish between deleted and
+    // unavailable properly?
+    // TODO: Maybe don't even bother with this and just try deleting them
+    // in the first place, ignoring errors if they dont exist?
+    // Plus delete has no rate limit
+    dbg!("Deleted all tweets??");
+    dbg!(existing_tweets.len());
+    dbg!(existing_tweets.first());
 
     // let mut args = Args::parse();
     Ok(())
