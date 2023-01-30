@@ -41,7 +41,10 @@ use time::{
     UtcOffset,
 };
 
-use crate::{models::Tweet as MTweet, twitter::create_auth};
+use crate::{
+    models::Tweet as MTweet,
+    twitter::{collect_tweets, create_auth},
+};
 
 mod config;
 mod db;
@@ -86,72 +89,6 @@ pub struct Access {
     api_secret: String,
     access: String,
     access_secret: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct Tweet {
-    /// Tweet ID
-    id_str: String,
-
-    /// Number of retweets
-    retweet_count: String,
-
-    /// Number of likes
-    #[serde(rename = "favorite_count")]
-    #[serde(default)]
-    like_count: String,
-
-    /// Time of tweet
-    ///
-    /// See [`TWITTER_DATE`]
-    created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct TweetObj {
-    tweet: Tweet,
-}
-
-fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
-    let mut files = Vec::with_capacity(10);
-    let path = path.join("data");
-    for file in path.read_dir()? {
-        let file = file?;
-        let ty = file.file_type()?;
-        if !ty.is_file() {
-            continue;
-        }
-        let name = file.file_name();
-        let name = name
-            .to_str()
-            .ok_or_else(|| anyhow!("Invalid UTF-8 in filename {:?}", file.file_name()))?;
-        if !name.starts_with("tweets") {
-            continue;
-        }
-        files.push(file.path());
-    }
-    if files.len() > 99 {
-        return Err(anyhow!("Too many tweet files, can not handle more than 99"));
-    }
-    files.sort();
-
-    let mut out = Vec::new();
-    for path in files {
-        // Twitter puts this nonsense in front of the tweet files
-        // Assume there are less than 99 parts.
-        // This will work for both single and double digits
-        // The full line is  `window.YTD.tweets.part4 = [`
-        const PREFIX: &str = "window.YTD.tweets.part99 ";
-        let data = fs::read_to_string(path)?;
-
-        let data: Vec<TweetObj> = from_str(&data[PREFIX.len()..])?;
-        out.extend(data.into_iter().map(|t| t.tweet));
-        // break;
-    }
-
-    Ok(out)
 }
 
 fn main() -> Result<()> {
