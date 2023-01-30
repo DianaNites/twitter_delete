@@ -42,8 +42,11 @@ use time::{
 
 use crate::models::Tweet as MTweet;
 
+mod config;
+mod db;
 mod models;
 mod schema;
+mod twitter;
 
 static ACCESS: &str = include_str!("../scratch/access.json");
 
@@ -346,7 +349,6 @@ fn main() -> Result<()> {
             // Tweet IDs are assumed to be 19 characters
             // 100 chunks, 19 ID + 1 comma
             let mut ids = String::with_capacity(100 * 20);
-            let mut stdout = stdout().lock();
             for tweet in t.chunks(100) {
                 ids.clear();
                 for t in tweet {
@@ -430,8 +432,12 @@ fn main() -> Result<()> {
                     }
                     Ok(gone)
                 })?;
-                writeln!(&mut stdout, "Marked {gone} tweets as already deleted")?;
+                // writeln!(&mut stdout, "Marked {gone} tweets as already deleted")?;
+                println!("Marked {gone} tweets as already deleted");
             }
+            // For some reason when I leave this running it keeps ending, but running it
+            // again finds more??
+            // Is there a limit to how much can be returned by filter at once?
             dbg!("Deleted all tweets??");
             dbg!(t.len());
             dbg!(t.first());
