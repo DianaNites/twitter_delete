@@ -126,7 +126,10 @@ fn main() -> Result<()> {
     // Lookup tweets in the DB and mark them as deleted if they don't exist
     // Skips tweets we have already checked
     // FIXME: This should use created_before..
-    let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
+    let existing_tweets: Vec<MTweet> = existing()
+        // Why doesn't this work??
+        // .filter(&created_before(off))
+        .load::<MTweet>(conn)?;
     println!(
         "Checking whether {} tweets were already deleted, out of {} total tweets to process",
         existing_tweets.len(),
