@@ -7,5 +7,6 @@ diesel::table! {
         likes -> Integer,
         created_at -> BigInt,
         deleted -> Bool,
+        checked -> Bool,
     }
 }

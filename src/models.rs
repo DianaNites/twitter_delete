@@ -31,6 +31,9 @@ pub struct Tweet {
 
     /// Whether the tweet has been deleted
     pub deleted: bool,
+
+    /// Whether the tweet has already been checked for existence
+    pub checked: bool,
 }
 
 impl Tweet {
@@ -41,6 +44,7 @@ impl Tweet {
             likes,
             created_at,
             deleted: false,
+            checked: false,
         }
     }
 }
