@@ -41,7 +41,7 @@ use time::{
 };
 
 use crate::{
-    db::count_tweets,
+    db::{count_tweets, created_before, existing},
     models::Tweet as MTweet,
     twitter::{collect_tweets, create_auth},
 };
@@ -145,14 +145,14 @@ fn main() -> Result<()> {
         use crate::schema::tweets::dsl::*;
         let conn = &mut conn;
 
-        let t = tweets.filter(created_at.lt(&off));
-
-        let found: Vec<MTweet> = t.load::<MTweet>(conn)?;
+        let to_process: Vec<MTweet> = created_before(off).load::<MTweet>(conn)?;
 
         {
             let mut client = ClientBuilder::new().build()?;
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
+            let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
+
             let t = tweets.filter(deleted.eq(false)).load::<MTweet>(conn)?;
             dbg!(t.len());
 
@@ -249,6 +249,14 @@ fn main() -> Result<()> {
             // For some reason when I leave this running it keeps ending, but running it
             // again finds more??
             // Is there a limit to how much can be returned by filter at once?
+            // FUCK ohhh is it because, duh, not all tweets in my test archive actually
+            // *are* deleted So of course rerunning it returns the same ones
+            // But wait, then why does rerunning it sometimes still mark tweets as deleted..
+            // twitter api limitation where it doesn't distinguish between deleted and
+            // unavailable properly?
+            // TODO: Maybe don't even bother with this and just try deleting them
+            // in the first place, ignoring errors if they dont exist?
+            // Plus delete has no rate limit
             dbg!("Deleted all tweets??");
             dbg!(t.len());
             dbg!(t.first());

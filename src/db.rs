@@ -3,7 +3,11 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
-use diesel::prelude::*;
+use diesel::{
+    dsl::{Eq, Filter, Lt},
+    prelude::{sql_function, *},
+    sql_types::{BigInt, Integer, Text},
+};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
 use crate::{models::Tweet, schema::tweets as db};
@@ -38,4 +42,22 @@ pub fn add_tweets(conn: &mut SqliteConnection, tweets: &[Tweet]) -> Result<usize
 pub fn count_tweets(conn: &mut SqliteConnection) -> Result<i64> {
     let c = db::dsl::tweets.count().get_result::<i64>(conn)?;
     Ok(c)
+}
+
+pub type CreatedBefore = Filter<db::dsl::tweets, Lt<db::dsl::created_at, i64>>;
+
+/// Gets all tweets created before `utc`
+///
+/// Uses UTC unix time
+pub fn created_before(utc: i64) -> CreatedBefore {
+    use db::dsl::*;
+    tweets.filter(created_at.lt(utc))
+}
+
+pub type Deleted = Filter<db::dsl::tweets, Eq<db::dsl::deleted, bool>>;
+
+/// Gets all existing, not marked as deleted, tweets
+pub fn existing() -> Deleted {
+    use db::dsl::*;
+    tweets.filter(deleted.eq(false))
 }
