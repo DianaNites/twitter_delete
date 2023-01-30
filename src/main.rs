@@ -26,6 +26,7 @@ use rand::{
     prelude::*,
     thread_rng,
 };
+use reqwest::{blocking::ClientBuilder, header::AUTHORIZATION, Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::from_str;
 use time::{
@@ -40,7 +41,7 @@ use time::{
     UtcOffset,
 };
 
-use crate::models::Tweet as MTweet;
+use crate::{models::Tweet as MTweet, twitter::create_auth};
 
 mod config;
 mod db;
@@ -79,7 +80,7 @@ struct Args {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "UPPERCASE", deny_unknown_fields)]
-struct Access {
+pub struct Access {
     test_path: PathBuf,
     api_key: String,
     api_secret: String,
@@ -230,115 +231,6 @@ fn main() -> Result<()> {
         let found: Vec<MTweet> = t.load::<MTweet>(conn)?;
 
         {
-            use std::io::Write;
-
-            use base64::{engine::general_purpose::STANDARD, Engine as _};
-            use hmac::{Hmac, Mac};
-            use req::{
-                blocking::{ClientBuilder, RequestBuilder},
-                header,
-                header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE},
-                Method,
-                StatusCode,
-                Url,
-            };
-            use reqwest as req;
-            use sha1::Sha1;
-            use urlencoding::encode;
-
-            type HmacSha1 = Hmac<Sha1>;
-
-            /// Params is not encoded
-            fn create_auth(
-                keys: &Access,
-                base_url: &str,
-                method: Method,
-                params: &[(String, String)],
-            ) -> String {
-                let mut rng = thread_rng();
-                let auth = &[
-                    //
-                    ("oauth_consumer_key", &keys.api_key),
-                    ("oauth_nonce", &Alphanumeric.sample_string(&mut rng, 32)),
-                    ("oauth_signature_method", &"HMAC-SHA1".to_string()),
-                    (
-                        "oauth_timestamp",
-                        &OffsetDateTime::now_utc().unix_timestamp().to_string(),
-                    ),
-                    ("oauth_token", &keys.access),
-                    ("oauth_version", &"1.0".to_string()),
-                ];
-                // Percent encoded auth values
-                let mut auth: Vec<_> = auth
-                    .iter()
-                    .map(|(k, v)| (encode(k).into_owned(), encode(v).into_owned()))
-                    .collect();
-                auth.sort_by(|a, b| a.0.cmp(&b.0));
-
-                // Percent encoded Auth values used for generating the signature
-                let mut sig = auth.clone();
-                // Includes parameters
-                sig.extend(
-                    params
-                        .iter()
-                        .map(|(k, v)| (encode(k).into_owned(), encode(v).into_owned())),
-                );
-                // Has to be sorted
-                sig.sort_by(|a, b| a.0.cmp(&b.0));
-
-                // Parameter string
-                // Sig is already percent encoded
-                let mut param_string = String::new();
-                for (k, v) in sig {
-                    param_string.push_str(&k);
-                    param_string.push('=');
-                    param_string.push_str(&v);
-                    param_string.push('&');
-                }
-                // Pop last &
-                param_string.pop();
-
-                // Signature base string
-                let mut sig_base = String::new();
-                sig_base.push_str(method.as_str());
-                sig_base.push('&');
-                sig_base.push_str(&encode(base_url));
-                sig_base.push('&');
-                sig_base.push_str(&encode(&param_string));
-
-                // Sign key
-                let mut sign_key = String::new();
-                sign_key.push_str(&encode(&keys.api_secret));
-                sign_key.push('&');
-                sign_key.push_str(&encode(&keys.access_secret));
-
-                // Sign it
-                let mut mac: HmacSha1 = HmacSha1::new_from_slice(sign_key.as_bytes()).unwrap();
-                mac.update(sig_base.as_bytes());
-                let sig = mac.finalize().into_bytes();
-
-                let sig = STANDARD.encode(sig);
-
-                // Final auth header string
-                // Everything is already percent encoded
-                let mut auth_out = String::from("Oauth ");
-                for (k, v) in auth.into_iter().chain(once((
-                    "oauth_signature".to_string(),
-                    encode(&sig).into_owned(),
-                ))) {
-                    auth_out.push_str(&k);
-                    auth_out.push_str("=\"");
-                    auth_out.push_str(&v);
-                    auth_out.push('"');
-                    auth_out.push_str(", ");
-                }
-                // Pop last comma and space
-                auth_out.pop();
-                auth_out.pop();
-
-                auth_out
-            }
-
             let mut client = ClientBuilder::new().build()?;
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
