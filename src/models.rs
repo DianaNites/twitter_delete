@@ -14,10 +14,10 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 
 use crate::schema::tweets;
 
-#[derive(Queryable, Insertable)]
+#[derive(Queryable, Insertable, Clone)]
 #[diesel(table_name = tweets)]
 pub struct Tweet {
-    /// Tweet ID
+    /// Tweet ID. Primary key, Unique.
     pub id_str: String,
 
     /// Number of retweets
