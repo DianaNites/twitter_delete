@@ -41,7 +41,7 @@ use time::{
 };
 
 use crate::{
-    db::{count_tweets, created_before, existing},
+    db::{count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
     twitter::{collect_tweets, create_auth},
 };
@@ -142,7 +142,6 @@ fn main() -> Result<()> {
     // and mark as deleted
 
     {
-        use crate::schema::tweets::dsl::*;
         let conn = &mut conn;
 
         let to_process: Vec<MTweet> = created_before(off).load::<MTweet>(conn)?;
@@ -151,16 +150,17 @@ fn main() -> Result<()> {
             let mut client = ClientBuilder::new().build()?;
 
             // Lookup tweets in the DB and mark them as deleted if they don't exist
+            // Skips tweets we have already checked
             let existing_tweets: Vec<MTweet> = existing().load::<MTweet>(conn)?;
-
-            let t = tweets.filter(deleted.eq(false)).load::<MTweet>(conn)?;
-            dbg!(t.len());
+            dbg!(existing_tweets.len());
+            let chunks = existing_tweets.chunks(100);
 
             // Size of all tweet IDs and commas
             // Tweet IDs are assumed to be 19 characters
             // 100 chunks, 19 ID + 1 comma
             let mut ids = String::with_capacity(100 * 20);
-            for tweet in t.chunks(100) {
+
+            for tweet in chunks {
                 ids.clear();
                 for t in tweet {
                     ids.push_str(&t.id_str);
@@ -230,20 +230,18 @@ fn main() -> Result<()> {
                 };
                 let res: LookupResp = res.json()?;
 
-                let gone = conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
                     let mut gone = 0;
                     for t in tweet {
                         if let Some(v) = res.id.get(&t.id_str) {
                             if v.is_none() {
-                                gone += diesel::update(tweets.find(&t.id_str))
-                                    .set(deleted.eq(true))
-                                    .execute(conn)?;
+                                // FIXME: Terrible hack
+                                gone += deleted(conn, &[t.clone()])?;
                             }
                         }
                     }
                     Ok(gone)
                 })?;
-                // writeln!(&mut stdout, "Marked {gone} tweets as already deleted")?;
                 println!("Marked {gone} tweets as already deleted");
             }
             // For some reason when I leave this running it keeps ending, but running it
@@ -258,8 +256,8 @@ fn main() -> Result<()> {
             // in the first place, ignoring errors if they dont exist?
             // Plus delete has no rate limit
             dbg!("Deleted all tweets??");
-            dbg!(t.len());
-            dbg!(t.first());
+            dbg!(existing_tweets.len());
+            dbg!(existing_tweets.first());
         }
 
         // let delete = diesel::update(t).set(deleted.eq(true)).execute(conn)?;
