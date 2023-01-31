@@ -144,7 +144,6 @@ fn main() -> Result<()> {
     let keys: Access = from_str(ACCESS)?;
 
     let mut args = Args::parse();
-    dbg!(&args);
 
     let mut conn = crate::db::create_db(&db_path)?;
     let conn = &mut conn;
@@ -177,10 +176,11 @@ fn main() -> Result<()> {
     match args {
         Args::Import { path } => {
             let added = import_tweets(conn, &path)?;
-            println!(
+            writeln!(
+                stdout,
                 "Loaded {added} tweets. Total tweets {}",
                 count_tweets(conn)?
-            );
+            )?;
 
             // Lookup `tweets` on twitter and mark the ones that are already
             // deleted
@@ -192,11 +192,12 @@ fn main() -> Result<()> {
                 .select(tdb::dsl::id_str)
                 .load::<String>(conn)?;
 
-            println!(
+            writeln!(
+                stdout,
                 "Checking whether {} tweets were already deleted, out of {} total tweets",
                 unchecked_tweets.len(),
                 count_tweets(conn)?
-            );
+            )?;
 
             // Last `gone` and count of equal values
             let mut last = (0, 0);
@@ -279,11 +280,12 @@ fn main() -> Result<()> {
                 .filter(tdb::dsl::retweets.lt(unless_retweets as i32))
                 .select(tdb::dsl::id_str)
                 .load::<String>(conn)?;
-            println!(
+            writeln!(
+                stdout,
                 "Deleting {} tweets, out of {} total tweets",
                 to_process.len(),
                 count_tweets(conn)?
-            );
+            )?;
 
             let mut total = 0;
 
