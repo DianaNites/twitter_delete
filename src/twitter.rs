@@ -42,14 +42,14 @@ pub const TWEET_LOOKUP_URL: &str = "https://api.twitter.com/1.1/statuses/lookup.
 /// Ends in `{id}.json`
 ///
 /// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id>
-pub const TWEET_DESTROY_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/destroy/";
+pub const TWEET_DESTROY_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/destroy";
 
 /// Unretweet a tweet
 ///
 /// Ends in `{id}.json`
 ///
 /// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-unretweet-id>
-pub const TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/unretweet/";
+pub const TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/unretweet";
 
 /// Get information on a specific tweet
 ///
@@ -400,6 +400,53 @@ where
             .form(params);
         let res = rate_limit(&req, &mut on_limit)?;
         on_chunk(res)?;
+    }
+
+    Ok(())
+}
+
+/// Delete `tweets` on twitter.
+///
+/// `tweets` is a list of tweet IDs to delete
+///
+/// Note that this twitter API can only delete tweets one at a time,
+/// so this will call `on_del` for each successfully processed tweet.
+///
+/// Calls `on_limit` whenever a rate limit is hit.
+pub fn delete_tweets<'a, OnLimit, OnDelete>(
+    client: &Client,
+    keys: &Access,
+    tweets: impl Iterator<Item = &'a str>,
+    on_limit: OnLimit,
+    on_delete: OnDelete,
+) -> Result<()>
+where
+    OnLimit: FnMut(RateLimit, &Response) -> Result<()>,
+    OnDelete: FnMut(Response) -> Result<()>,
+{
+    let mut on_limit = on_limit;
+    let mut on_delete = on_delete;
+    let mut tweets = tweets;
+    let tweets = tweets.by_ref();
+
+    for tweet in tweets {
+        let url = format!("{TWEET_DESTROY_URL_FMT}/{tweet}.json");
+        let params = &[("id", tweet)];
+
+        let req = client
+            .post(&url)
+            .header(
+                AUTHORIZATION,
+                create_auth(
+                    keys,
+                    &url,
+                    Method::POST,
+                    &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+                ),
+            )
+            .form(params);
+        let res = rate_limit(&req, &mut on_limit)?;
+        on_delete(res)?;
     }
 
     Ok(())
