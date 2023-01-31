@@ -1,15 +1,4 @@
-#![allow(
-    unused_imports,
-    dead_code,
-    unreachable_code,
-    unused_mut,
-    unused_variables,
-    clippy::let_and_return,
-    clippy::redundant_clone,
-    clippy::never_loop
-)]
 use std::{
-    collections::HashMap,
     fs,
     io::{stdout, Write},
     path::{Path, PathBuf},
@@ -30,7 +19,6 @@ use time::{
     PrimitiveDateTime,
     UtcOffset,
 };
-use twitter::Tweet;
 
 use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
@@ -98,10 +86,11 @@ enum Args {
     },
 }
 
+/// Twitter API keys.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "UPPERCASE", deny_unknown_fields)]
+#[serde(rename_all = "UPPERCASE")]
 pub struct Access {
-    test_path: PathBuf,
+    // test_path: PathBuf,
     api_key: String,
     api_secret: String,
     access: String,
@@ -144,7 +133,7 @@ fn main() -> Result<()> {
     fs::create_dir_all(config_path)?;
     let keys: Access = from_str(ACCESS)?;
 
-    let mut args = Args::parse();
+    let args = Args::parse();
 
     let mut conn = crate::db::create_db(&db_path)?;
     let conn = &mut conn;
@@ -206,8 +195,6 @@ fn main() -> Result<()> {
                 count_tweets(conn)?
             )?;
 
-            // Last `gone` and count of equal values
-            let mut last = (0, 0);
             let mut total = 0;
 
             let pb = ProgressBar::new(unchecked_tweets.len() as u64);

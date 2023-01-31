@@ -49,12 +49,12 @@ pub const TWEET_DESTROY_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/de
 /// Ends in `{id}.json`
 ///
 /// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-unretweet-id>
-pub const TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/unretweet";
+pub const _TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/unretweet";
 
 /// Get information on a specific tweet
 ///
 /// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-show-id>
-pub const TWEET_SHOW_URL: &str = "https://api.twitter.com/1.1/statuses/show.json";
+pub const _TWEET_SHOW_URL: &str = "https://api.twitter.com/1.1/statuses/show.json";
 
 /// Indicates the rate limit response from the server
 #[derive(Debug, Clone, Copy)]

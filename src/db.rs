@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use diesel::{
-    dsl::{And, Asc, Eq, Filter, Lt, Order},
+    dsl::{And, Eq, Lt},
     prelude::*,
     result::Error as DieselError,
 };
