@@ -217,21 +217,6 @@ fn main() -> Result<()> {
         "Marked {total} total tweets as already deleted from twitter"
     )?;
 
-    // For some reason when I leave this running it keeps ending, but running it
-    // again finds more??
-    // Is there a limit to how much can be returned by filter at once?
-    // FUCK ohhh is it because, duh, not all tweets in my test archive actually
-    // *are* deleted So of course rerunning it returns the same ones
-    // But wait, then why does rerunning it sometimes still mark tweets as deleted..
-    // twitter api limitation where it doesn't distinguish between deleted and
-    // unavailable properly?
-    // TODO: Maybe don't even bother with this and just try deleting them
-    // in the first place, ignoring errors if they dont exist?
-    // Plus delete has no rate limit
-    dbg!("Deleted all tweets??");
-    dbg!(existing_tweets.len());
-    dbg!(existing_tweets.first());
-
     // let mut args = Args::parse();
     Ok(())
 }
