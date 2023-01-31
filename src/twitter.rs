@@ -1,5 +1,12 @@
 //! Handles stuff related to interacting with the twitter API
-use std::{fs, iter::once, path::Path, thread::sleep, time::Duration as StdDuration};
+use std::{
+    collections::HashMap,
+    fs,
+    iter::once,
+    path::Path,
+    thread::sleep,
+    time::Duration as StdDuration,
+};
 
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -37,12 +44,6 @@ pub const TWEET_LOOKUP_URL: &str = "https://api.twitter.com/1.1/statuses/lookup.
 /// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id
 pub const TWEET_DESTROY_URL: &str = "https://api.twitter.com/1.1/statuses/destroy/";
 
-/// Twitter tweet object. Internal, useless.
-#[derive(Debug, Deserialize)]
-struct TweetObj {
-    tweet: Tweet,
-}
-
 /// Indicates the rate limit response from the server
 #[derive(Debug, Clone, Copy)]
 pub enum RateLimit {
@@ -58,6 +59,38 @@ pub enum RateLimit {
     ///
     /// This is handled by defaulting to 15 minutes
     Unknown,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LookupResp {
+    pub id: HashMap<String, Option<LookupTweet>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct LookupTweet {
+    /// Tweet ID
+    pub id_str: String,
+
+    /// Number of retweets
+    pub retweet_count: u64,
+
+    /// Number of likes
+    #[serde(rename = "favorite_count")]
+    #[serde(default)]
+    pub like_count: u64,
+
+    /// Time of tweet
+    ///
+    /// See [`TWITTER_DATE`]
+    pub created_at: String,
+}
+
+/// Twitter tweet object. Internal, useless.
+#[derive(Debug, Deserialize)]
+struct TweetObj {
+    tweet: Tweet,
 }
 
 /// A Tweet in the twitter archive.

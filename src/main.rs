@@ -33,7 +33,7 @@ use time::{
 use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
-    twitter::{collect_tweets, lookup_tweets, RateLimit},
+    twitter::{collect_tweets, lookup_tweets, LookupResp, RateLimit},
 };
 
 mod config;
@@ -232,30 +232,4 @@ fn main() -> Result<()> {
 
     // let mut args = Args::parse();
     Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct LookupResp {
-    id: HashMap<String, Option<LookupTweet>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-struct LookupTweet {
-    /// Tweet ID
-    id_str: String,
-
-    /// Number of retweets
-    retweet_count: u64,
-
-    /// Number of likes
-    #[serde(rename = "favorite_count")]
-    #[serde(default)]
-    like_count: u64,
-
-    /// Time of tweet
-    ///
-    /// See [`TWITTER_DATE`]
-    created_at: String,
 }
