@@ -179,9 +179,10 @@ fn main() -> Result<()> {
                 .collect();
             // Make sure its sorted
             ids.sort();
-            checked(conn, ids.iter().copied())?;
 
             let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
+                // Mark all tweets as checked
+                checked(conn, res.id.keys().map(|k| k.as_str()))?;
                 let gone = deleted(conn, ids.iter().copied())?;
                 Ok(gone)
             })?;
