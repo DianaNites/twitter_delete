@@ -157,7 +157,7 @@ fn main() -> Result<()> {
                 .unwrap_or(60 * 15);
 
             eprintln!(
-                "Rate limited, waiting until UTC {} ({secs} seconds)",
+                "Rate limited, waiting until {} ({secs} seconds)",
                 (OffsetDateTime::now_utc() + Duration::seconds(secs))
                     .to_offset(utc_offset)
                     .time()
