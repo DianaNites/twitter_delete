@@ -11,6 +11,7 @@
 use std::{
     collections::HashMap,
     fs,
+    io::{stdout, Write},
     path::{Path, PathBuf},
 };
 
@@ -131,10 +132,14 @@ fn main() -> Result<()> {
         // .filter(&created_before(off))
         .load::<MTweet>(conn)?;
     println!(
-        "Checking whether {} tweets were already deleted, out of {} total tweets to process",
+        "Checking whether {} tweets were already deleted, out of {} total tweets",
         existing_tweets.len(),
-        to_process.len()
+        count_tweets(conn)?
     );
+
+    let mut stdout = stdout().lock();
+    // Last `gone` and count of equal values
+    let mut last = (0, 0);
 
     lookup_tweets(
         &client,
@@ -174,7 +179,26 @@ fn main() -> Result<()> {
                 let gone = deleted(conn, ids.iter().copied())?;
                 Ok(gone)
             })?;
-            println!("Marked {gone} tweets as already deleted from twitter");
+            if gone == last.0 {
+                last.1 += 1;
+            } else {
+                writeln!(stdout)?;
+                last = (gone, 1);
+            }
+
+            if last.1 > 1 {
+                write!(
+                    stdout,
+                    "Marked {gone} x{} tweets as already deleted from twitter\r",
+                    last.1
+                )?;
+            } else {
+                write!(
+                    stdout,
+                    "Marked {gone} tweets as already deleted from twitter\r"
+                )?;
+            }
+            stdout.flush()?;
 
             Ok(())
         },
