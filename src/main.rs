@@ -91,7 +91,7 @@ enum Args {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "UPPERCASE", deny_unknown_fields)]
 pub struct Access {
-    test_path: PathBuf,
+    _test_path: PathBuf,
     api_key: String,
     api_secret: String,
     access: String,
@@ -101,8 +101,8 @@ pub struct Access {
 /// Import tweets from the twitter archive to our database
 ///
 /// Ignores any tweets already in the database
-fn import_tweets(conn: &mut SqliteConnection, keys: &Access) -> Result<usize> {
-    let tweets = collect_tweets(&keys.test_path)?;
+fn import_tweets(conn: &mut SqliteConnection, path: &Path) -> Result<usize> {
+    let tweets = collect_tweets(path)?;
 
     let tweets: Vec<MTweet> = tweets
         .into_iter()
@@ -167,8 +167,7 @@ fn main() -> Result<()> {
 
     match args {
         Args::Import { path } => {
-            import_tweets(conn, &keys)?;
-            let added = import_tweets(conn, &keys)?;
+            let added = import_tweets(conn, &path)?;
             println!(
                 "Loaded {added} tweets. Total tweets {}",
                 count_tweets(conn)?
