@@ -4,5 +4,6 @@ CREATE TABLE tweets (
     retweets INTEGER NOT NULL,
     likes INTEGER NOT NULL,
     created_at INTEGER NOT NULL,
-    deleted INTEGER NOT NULL
+    deleted INTEGER NOT NULL,
+    checked INTEGER NOT NULL
 ) STRICT;
