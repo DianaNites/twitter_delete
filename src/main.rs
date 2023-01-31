@@ -240,7 +240,7 @@ fn main() -> Result<()> {
 
                     // Advance progress bar
                     pb.inc(100);
-                    pb.set_prefix(format!("Deleted {gone} tweets"));
+                    pb.set_prefix(format!("Marked {gone} tweets as deleted"));
 
                     Ok(())
                 },
