@@ -154,7 +154,14 @@ fn main() -> Result<()> {
 
     let client = ClientBuilder::new().build()?;
 
-    let mut rate_limited = |limit, _res: &Response| {
+    let progress_style = ProgressStyle::with_template(
+        "{msg}\n[{elapsed_precise}] {wide_bar} {pos:>7}/{len:7} ({percent}%) \nETA: {eta_precise}\n{prefix}",
+    )
+    .unwrap();
+    let pb = ProgressBar::new(0);
+    pb.set_style(progress_style);
+
+    let rate_limited = |limit, _res: &Response| {
         let secs = match limit {
             RateLimit::Until(secs) => secs,
             RateLimit::Unknown => 60 * 15,
@@ -163,23 +170,17 @@ fn main() -> Result<()> {
             .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
             .unwrap_or(60 * 15);
 
-        eprintln!(
+        pb.set_prefix(format!(
             "Rate limited, waiting until {} ({secs} seconds)",
             (OffsetDateTime::now_utc() + Duration::seconds(secs))
                 .to_offset(utc_offset)
                 .time()
                 .format(HUMAN_TIME)?
-        );
+        ));
 
         Ok(())
     };
     let mut stdout = stdout().lock();
-
-    let progress_style = ProgressStyle::with_template(
-        //
-        "{msg}\n[{elapsed_precise}] {wide_bar} {pos:>7}/{len:7} ({percent}%) \nETA: {eta_precise}\n{prefix}",
-    )
-    .unwrap();
 
     match args {
         Args::Import { path } => {
@@ -200,26 +201,25 @@ fn main() -> Result<()> {
                 .select(tdb::dsl::id_str)
                 .load::<String>(conn)?;
 
-            writeln!(
-                stdout,
+            let mut total = 0;
+
+            pb.set_length(unchecked_tweets.len() as u64);
+            pb.set_message(format!(
                 "Checking whether {} tweets were already deleted, out of {} total tweets",
                 unchecked_tweets.len(),
                 count_tweets(conn)?
-            )?;
-
-            let mut total = 0;
-
-            let pb = ProgressBar::new(unchecked_tweets.len() as u64);
-            pb.set_message("Checking whether tweets exist");
-            pb.set_style(progress_style);
-            pb.tick();
+            ));
 
             lookup_tweets(
                 &client,
                 &keys,
                 unchecked_tweets.iter().map(|f| f.as_str()),
-                &mut rate_limited,
+                |r, l| {
+                    pb.enable_steady_tick(std::time::Duration::from_secs(1));
+                    rate_limited(r, l)
+                },
                 |res| {
+                    pb.disable_steady_tick();
                     let res: LookupResp = res.json()?;
                     let mut ids: Vec<&str> = res
                         .id
@@ -276,10 +276,8 @@ fn main() -> Result<()> {
                 .select(tdb::dsl::id_str)
                 .load::<String>(conn)?;
 
-            let pb = ProgressBar::new(to_process.len() as u64);
+            pb.set_length(to_process.len() as u64);
             pb.set_message("Deleting tweets");
-            pb.set_style(progress_style);
-            pb.tick();
 
             let mut total = 0;
 
@@ -287,8 +285,12 @@ fn main() -> Result<()> {
                 &client,
                 &keys,
                 to_process.iter().map(|f| f.as_str()),
-                &mut rate_limited,
+                |r, l| {
+                    pb.enable_steady_tick(std::time::Duration::from_secs(1));
+                    rate_limited(r, l)
+                },
                 |res| {
+                    pb.disable_steady_tick();
                     let res: DeleteResp = res.json()?;
                     let id = res.id_str;
 
