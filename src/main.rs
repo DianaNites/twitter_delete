@@ -49,6 +49,17 @@ static ACCESS: &str = include_str!("../scratch/access.json");
 
 static HUMAN_TIME: &[FormatItem] = format_description!("[hour repr:12]:[minute]:[second] [period]");
 
+/// Twitter API keys.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub struct Access {
+    // test_path: PathBuf,
+    api_key: String,
+    api_secret: String,
+    access: String,
+    access_secret: String,
+}
+
 /// Parse tweets from your twitter archive
 #[derive(Parser, Debug)]
 enum Args {
@@ -93,17 +104,6 @@ enum Args {
         #[clap(long, short = 'r', value_hint = ValueHint::Other, default_value = "0")]
         unless_retweets: u32,
     },
-}
-
-/// Twitter API keys.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub struct Access {
-    // test_path: PathBuf,
-    api_key: String,
-    api_secret: String,
-    access: String,
-    access_secret: String,
 }
 
 /// Import tweets from the twitter archive to our database
