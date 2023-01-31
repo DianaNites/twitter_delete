@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use diesel::prelude::*;
 use time::OffsetDateTime;
 
-use crate::schema::tweets;
+use crate::{schema::tweets, twitter::TWITTER_DATE};
 
 #[derive(Queryable, Insertable, Clone)]
 #[diesel(table_name = tweets)]
@@ -47,7 +47,7 @@ impl std::fmt::Debug for Tweet {
             .field("likes", &self.likes);
         if let Ok(t) = OffsetDateTime::from_unix_timestamp(self.created_at)
             .map_err(|e| anyhow!(e))
-            .and_then(|f| f.format(super::TWITTER_DATE).map_err(|e| anyhow!(e)))
+            .and_then(|f| f.format(TWITTER_DATE).map_err(|e| anyhow!(e)))
         {
             f.field("created_at", &t);
         } else {

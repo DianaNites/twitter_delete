@@ -24,7 +24,15 @@ use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
     schema::tweets as tdb,
-    twitter::{collect_tweets, delete_tweets, lookup_tweets, DeleteResp, LookupResp, RateLimit},
+    twitter::{
+        collect_tweets,
+        delete_tweets,
+        lookup_tweets,
+        DeleteResp,
+        LookupResp,
+        RateLimit,
+        TWITTER_DATE,
+    },
 };
 
 mod config;
@@ -34,11 +42,12 @@ mod schema;
 mod twitter;
 mod util;
 
+/// Twitter API keys, in a simple JSON format
+///
+/// See [Access]
 static ACCESS: &str = include_str!("../scratch/access.json");
 
-static TWITTER_DATE: &[FormatItem] = format_description!(
-    "[weekday repr:short case_sensitive:false] [month repr:short] [day] [hour]:[minute]:[second] +0000 [year]"
-);
+static HUMAN_TIME: &[FormatItem] = format_description!("[hour repr:12]:[minute]:[second] [period]");
 
 /// Parse tweets from your twitter archive
 #[derive(Parser, Debug)]
@@ -154,9 +163,7 @@ fn main() -> Result<()> {
             (OffsetDateTime::now_utc() + Duration::seconds(secs))
                 .to_offset(utc_offset)
                 .time()
-                .format(format_description!(
-                    "[hour repr:12]:[minute]:[second] [period]"
-                ))?
+                .format(HUMAN_TIME)?
         );
 
         Ok(())

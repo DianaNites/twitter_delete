@@ -25,7 +25,7 @@ use reqwest as req;
 use serde::Deserialize;
 use serde_json::from_str;
 use sha1::Sha1;
-use time::OffsetDateTime;
+use time::{format_description::FormatItem, macros::format_description, OffsetDateTime};
 use urlencoding::encode;
 
 use crate::Access;
@@ -55,6 +55,11 @@ pub const _TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/u
 ///
 /// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-show-id>
 pub const _TWEET_SHOW_URL: &str = "https://api.twitter.com/1.1/statuses/show.json";
+
+/// The format of twitters `created_at` dates
+pub static TWITTER_DATE: &[FormatItem] = format_description!(
+    "[weekday repr:short case_sensitive:false] [month repr:short] [day] [hour]:[minute]:[second] +0000 [year]"
+);
 
 /// Indicates the rate limit response from the server
 #[derive(Debug, Clone, Copy)]
