@@ -242,6 +242,71 @@ fn create_auth(
     auth_out
 }
 
+/// Handles rate limiting with the Twitter API
+///
+/// Sends request `req`, and if a rate limit error is returned,
+/// waits either until the time specified by twitter, or 15 minutes,
+/// and then repeats the request.
+///
+/// Before waiting, calls `on_limit`. If this returns an error, it is returned.
+///
+/// Ignores transient HTTP 500 errors. `on_limit` is **NOT** called.
+fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
+    req: &RequestBuilder,
+    on_limit: F,
+) -> Result<Response> {
+    let mut on_limit = on_limit;
+
+    let res = loop {
+        let req = req
+            .try_clone()
+            .expect("BUG: Failed to clone RequestBuilder");
+
+        let res = req.send()?;
+        if res.status().is_success() {
+            break res;
+        } else if res.status() == StatusCode::TOO_MANY_REQUESTS {
+            if let Some(r) = res
+                .headers()
+                .get("x-rate-limit-reset")
+                .map(|f| f.to_str())
+                .transpose()?
+            {
+                let secs: u64 = r.parse()?;
+                on_limit(RateLimit::Until(secs), &res)?;
+
+                // Default to 15 minutes
+                let secs = (secs as i64)
+                    .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
+                    .unwrap_or(60 * 15);
+                sleep(StdDuration::from_secs(secs as u64));
+            } else {
+                on_limit(RateLimit::Unknown, &res)?;
+
+                // Try waiting 15 minutes if there was no reset
+                // header
+                sleep(StdDuration::from_secs(60 * 15));
+            }
+        } else if res.status().is_server_error() {
+            // Wait a minute and retry on transient server errors
+            eprintln!(
+                "Encountered transient HTTP error {}, waiting one minute\nData: {}",
+                res.status(),
+                res.text()?
+            );
+            sleep(StdDuration::from_secs(60));
+        } else if res.status().is_client_error() {
+            return Err(anyhow!(
+                "Encountered HTTP error {}\nData: {}",
+                res.status(),
+                res.text()?
+            ));
+        }
+    };
+
+    Ok(res)
+}
+
 /// Collect tweets from the twitter archive. Returns ALL found tweets.
 ///
 /// `path` is the path to the archive, and tweets are expected to exist at
@@ -338,69 +403,4 @@ where
     }
 
     Ok(())
-}
-
-/// Handles rate limiting with the Twitter API
-///
-/// Sends request `req`, and if a rate limit error is returned,
-/// waits either until the time specified by twitter, or 15 minutes,
-/// and then repeats the request.
-///
-/// Before waiting, calls `on_limit`. If this returns an error, it is returned.
-///
-/// Ignores transient HTTP 500 errors. `on_limit` is **NOT** called.
-fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
-    req: &RequestBuilder,
-    on_limit: F,
-) -> Result<Response> {
-    let mut on_limit = on_limit;
-
-    let res = loop {
-        let req = req
-            .try_clone()
-            .expect("BUG: Failed to clone RequestBuilder");
-
-        let res = req.send()?;
-        if res.status().is_success() {
-            break res;
-        } else if res.status() == StatusCode::TOO_MANY_REQUESTS {
-            if let Some(r) = res
-                .headers()
-                .get("x-rate-limit-reset")
-                .map(|f| f.to_str())
-                .transpose()?
-            {
-                let secs: u64 = r.parse()?;
-                on_limit(RateLimit::Until(secs), &res)?;
-
-                // Default to 15 minutes
-                let secs = (secs as i64)
-                    .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
-                    .unwrap_or(60 * 15);
-                sleep(StdDuration::from_secs(secs as u64));
-            } else {
-                on_limit(RateLimit::Unknown, &res)?;
-
-                // Try waiting 15 minutes if there was no reset
-                // header
-                sleep(StdDuration::from_secs(60 * 15));
-            }
-        } else if res.status().is_server_error() {
-            // Wait a minute and retry on transient server errors
-            eprintln!(
-                "Encountered transient HTTP error {}, waiting one minute\nData: {}",
-                res.status(),
-                res.text()?
-            );
-            sleep(StdDuration::from_secs(60));
-        } else if res.status().is_client_error() {
-            return Err(anyhow!(
-                "Encountered HTTP error {}\nData: {}",
-                res.status(),
-                res.text()?
-            ));
-        }
-    };
-
-    Ok(res)
 }
