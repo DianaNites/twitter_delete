@@ -29,6 +29,7 @@ use time::{
     PrimitiveDateTime,
     UtcOffset,
 };
+use twitter::Tweet;
 
 use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
@@ -69,15 +70,14 @@ pub struct Access {
     access_secret: String,
 }
 
-fn main() -> Result<()> {
-    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("Missing $HOME"))?;
-    let config_path = Path::new(&home).join(".config/twitter_delete");
-    let db_path = config_path.join("tweets.db");
-    let utc_offset = UtcOffset::current_local_offset()?;
-
-    fs::create_dir_all(config_path)?;
-    let keys: Access = from_str(ACCESS)?;
-
+/// Import tweets from the twitter archive to our database
+///
+/// Ignores any tweets already in the database
+fn import_tweets(
+    conn: &mut SqliteConnection,
+    keys: &Access,
+    // tweets: impl Iterator<Item = Tweet>,
+) -> Result<usize> {
     let tweets = collect_tweets(&keys.test_path)?;
 
     let tweets: Vec<MTweet> = tweets
@@ -96,15 +96,27 @@ fn main() -> Result<()> {
             )
         })
         .collect();
+    let added = db::add_tweets(conn, &tweets)?;
+
+    Ok(added)
+}
+
+fn main() -> Result<()> {
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("Missing $HOME"))?;
+    let config_path = Path::new(&home).join(".config/twitter_delete");
+    let db_path = config_path.join("tweets.db");
+    let utc_offset = UtcOffset::current_local_offset()?;
+
+    fs::create_dir_all(config_path)?;
+    let keys: Access = from_str(ACCESS)?;
 
     let mut conn = crate::db::create_db(&db_path)?;
+    let conn = &mut conn;
 
-    // Add tweets to db, ignoring ones already there
-    let added = db::add_tweets(&mut conn, &tweets)?;
-
+    let added = import_tweets(conn, &keys)?;
     println!(
         "Loaded {added} tweets. Total tweets {}",
-        count_tweets(&mut conn)?
+        count_tweets(conn)?
     );
 
     // NOTE: Test select tweets older than 360 days
@@ -120,8 +132,6 @@ fn main() -> Result<()> {
 
     // Find all tweets older than the provided offset, delete them,
     // and mark as deleted
-
-    let conn = &mut conn;
 
     let client = ClientBuilder::new().build()?;
 
