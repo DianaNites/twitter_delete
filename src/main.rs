@@ -73,7 +73,6 @@ fn main() -> Result<()> {
     let config_path = Path::new(&home).join(".config/twitter_delete");
     let db_path = config_path.join("tweets.db");
     let utc_offset = UtcOffset::current_local_offset()?;
-    dbg!(utc_offset);
 
     fs::create_dir_all(config_path)?;
     let keys: Access = from_str(ACCESS)?;
