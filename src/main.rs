@@ -27,6 +27,7 @@ use time::{
     Duration,
     OffsetDateTime,
     PrimitiveDateTime,
+    UtcOffset,
 };
 
 use crate::{
@@ -71,6 +72,8 @@ fn main() -> Result<()> {
     let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("Missing $HOME"))?;
     let config_path = Path::new(&home).join(".config/twitter_delete");
     let db_path = config_path.join("tweets.db");
+    let utc_offset = UtcOffset::current_local_offset()?;
+    dbg!(utc_offset);
 
     fs::create_dir_all(config_path)?;
     let keys: Access = from_str(ACCESS)?;
@@ -150,11 +153,14 @@ fn main() -> Result<()> {
                 RateLimit::Until(secs) => secs,
                 RateLimit::Unknown => 60 * 15,
             } as i64;
+            let secs = secs
+                .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
+                .unwrap_or(60 * 15);
 
             eprintln!(
                 "Rate limited, waiting until UTC {} ({secs} seconds)",
                 (OffsetDateTime::now_utc() + Duration::seconds(secs))
-                    // .to_offset(UtcOffset::current_local_offset()?)
+                    .to_offset(utc_offset)
                     .time()
                     .format(format_description!(
                         "[hour repr:12]:[minute]:[second] [period]"
