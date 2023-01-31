@@ -68,14 +68,14 @@ enum Args {
     /// Without any filters this will do nothing, as a precaution against
     /// accidental deletions.
     ///
-    /// If you want to delete all tweets, pass in a empty filter.
+    /// If you really want to delete ***ALL*** tweets, pass in `--older_than 0`
     Delete {
         /// Exclude these tweet IDs
         #[clap(long, short, value_delimiter = ',', value_hint = ValueHint::Other)]
         exclude: Vec<String>,
 
         /// Delete tweets older than this many days
-        #[clap(long, short, value_hint = ValueHint::Other, default_value = "0")]
+        #[clap(long, short, value_hint = ValueHint::Other)]
         older_than: u32,
 
         /// Don't delete tweets if they have at least this many likes
@@ -101,11 +101,7 @@ pub struct Access {
 /// Import tweets from the twitter archive to our database
 ///
 /// Ignores any tweets already in the database
-fn import_tweets(
-    conn: &mut SqliteConnection,
-    keys: &Access,
-    // tweets: impl Iterator<Item = Tweet>,
-) -> Result<usize> {
+fn import_tweets(conn: &mut SqliteConnection, keys: &Access) -> Result<usize> {
     let tweets = collect_tweets(&keys.test_path)?;
 
     let tweets: Vec<MTweet> = tweets
@@ -140,46 +136,11 @@ fn main() -> Result<()> {
 
     let mut args = Args::parse();
     dbg!(&args);
-    panic!();
 
     let mut conn = crate::db::create_db(&db_path)?;
     let conn = &mut conn;
 
-    let added = import_tweets(conn, &keys)?;
-    println!(
-        "Loaded {added} tweets. Total tweets {}",
-        count_tweets(conn)?
-    );
-
-    // NOTE: Test select tweets older than 360 days
-    // My test archive is already older than 30 days lol
-    let off = Duration::days(360);
-    let off = OffsetDateTime::now_utc().checked_sub(off).ok_or_else(|| {
-        anyhow!(
-            "Specified offset of {} ({off}) is too far in the past",
-            util::human_dur(off),
-        )
-    })?;
-    let off = off.unix_timestamp();
-
-    // Find all tweets older than the provided offset, delete them,
-    // and mark as deleted
-
     let client = ClientBuilder::new().build()?;
-
-    // Lookup tweets in the DB and mark them as deleted if they don't exist
-    // Skips tweets we have already checked
-    let unchecked_tweets: Vec<MTweet> = tdb::dsl::tweets
-        .order(tdb::dsl::id_str.asc())
-        .filter(created_before(off))
-        .filter(existing())
-        .load::<MTweet>(conn)?;
-
-    println!(
-        "Checking whether {} tweets were already deleted, out of {} total tweets",
-        unchecked_tweets.len(),
-        count_tweets(conn)?
-    );
 
     let mut rate_limited = |limit, _res: &Response| {
         let secs = match limit {
@@ -202,96 +163,139 @@ fn main() -> Result<()> {
 
         Ok(())
     };
-
     let mut stdout = stdout().lock();
-    // Last `gone` and count of equal values
-    let mut last = (0, 0);
-    let mut total = 0;
 
-    lookup_tweets(
-        &client,
-        &keys,
-        unchecked_tweets.iter().map(|f| f.id_str.as_str()),
-        &mut rate_limited,
-        |res| {
-            let res: LookupResp = res.json()?;
-            let mut ids: Vec<&str> = res
-                .id
-                .iter()
-                .filter(|(_, v)| v.is_none())
-                .map(|(k, _)| k.as_str())
-                .collect();
-            // Make sure its sorted
-            ids.sort();
+    match args {
+        Args::Import { path } => {
+            import_tweets(conn, &keys)?;
+            let added = import_tweets(conn, &keys)?;
+            println!(
+                "Loaded {added} tweets. Total tweets {}",
+                count_tweets(conn)?
+            );
 
-            let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
-                // Mark all tweets as checked
-                checked(conn, res.id.keys().map(|k| k.as_str()))?;
-                let gone = deleted(conn, ids.iter().copied())?;
-                Ok(gone)
+            // Lookup `tweets` on twitter and mark the ones that are already
+            // deleted
+            //
+            // This skips tweets that have already been checked
+            let unchecked_tweets: Vec<String> = tdb::dsl::tweets
+                .order(tdb::dsl::id_str.asc())
+                .filter(existing())
+                .select(tdb::dsl::id_str)
+                .load::<String>(conn)?;
+
+            println!(
+                "Checking whether {} tweets were already deleted, out of {} total tweets",
+                unchecked_tweets.len(),
+                count_tweets(conn)?
+            );
+
+            // Last `gone` and count of equal values
+            let mut last = (0, 0);
+            let mut total = 0;
+
+            lookup_tweets(
+                &client,
+                &keys,
+                unchecked_tweets.iter().map(|f| f.as_str()),
+                &mut rate_limited,
+                |res| {
+                    let res: LookupResp = res.json()?;
+                    let mut ids: Vec<&str> = res
+                        .id
+                        .iter()
+                        .filter(|(_, v)| v.is_none())
+                        .map(|(k, _)| k.as_str())
+                        .collect();
+                    // Make sure its sorted
+                    ids.sort();
+
+                    let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
+                        // Mark all tweets as checked
+                        checked(conn, res.id.keys().map(|k| k.as_str()))?;
+                        let gone = deleted(conn, ids.iter().copied())?;
+                        Ok(gone)
+                    })?;
+                    total += gone;
+                    if gone == last.0 {
+                        last.1 += 1;
+                    } else {
+                        writeln!(stdout)?;
+                        last = (gone, 1);
+                    }
+
+                    if last.1 > 1 {
+                        // TODO: https://github.com/console-rs/indicatif
+                        write!(
+                            stdout,
+                            "Marked {gone} x{} tweets as already deleted from twitter\r",
+                            last.1
+                        )?;
+                    } else {
+                        write!(
+                            stdout,
+                            "Marked {gone} tweets as already deleted from twitter\r"
+                        )?;
+                    }
+                    stdout.flush()?;
+
+                    Ok(())
+                },
+            )?;
+            writeln!(
+                stdout,
+                "Marked {total} total tweets as already deleted from twitter"
+            )?;
+        }
+        Args::Delete {
+            exclude,
+            older_than,
+            unless_likes,
+            unless_retweets,
+        } => {
+            let off = Duration::days(older_than.into());
+            let off = OffsetDateTime::now_utc().checked_sub(off).ok_or_else(|| {
+                anyhow!(
+                    "Specified offset of {} ({off}) is too far in the past",
+                    util::human_dur(off),
+                )
             })?;
-            total += gone;
-            if gone == last.0 {
-                last.1 += 1;
-            } else {
-                writeln!(stdout)?;
-                last = (gone, 1);
-            }
+            let off = off.unix_timestamp();
 
-            if last.1 > 1 {
-                // TODO: https://github.com/console-rs/indicatif
-                write!(
-                    stdout,
-                    "Marked {gone} x{} tweets as already deleted from twitter\r",
-                    last.1
-                )?;
-            } else {
-                write!(
-                    stdout,
-                    "Marked {gone} tweets as already deleted from twitter\r"
-                )?;
-            }
-            stdout.flush()?;
+            let to_process: Vec<String> = tdb::dsl::tweets
+                .order(tdb::dsl::id_str.asc())
+                .filter(created_before(off))
+                .filter(existing())
+                .select(tdb::dsl::id_str)
+                .load::<String>(conn)?;
+            println!(
+                "Deleting {} tweets, out of {} total tweets",
+                to_process.len(),
+                count_tweets(conn)?
+            );
 
-            Ok(())
-        },
-    )?;
-    writeln!(
-        stdout,
-        "Marked {total} total tweets as already deleted from twitter"
-    )?;
+            let mut total = 0;
 
-    let to_process: Vec<MTweet> = tdb::dsl::tweets
-        .order(tdb::dsl::id_str.asc())
-        .filter(created_before(off))
-        .filter(existing())
-        .load::<MTweet>(conn)?;
-    println!(
-        "Deleting {} tweets, out of {} total tweets",
-        to_process.len(),
-        count_tweets(conn)?
-    );
+            delete_tweets(
+                &client,
+                &keys,
+                to_process.iter().map(|f| f.as_str()),
+                &mut rate_limited,
+                |res| {
+                    let res: DeleteResp = res.json()?;
+                    let id = res.id_str;
 
-    let mut total = 0;
+                    total += deleted(conn, [id.as_str()].iter().copied())?;
 
-    delete_tweets(
-        &client,
-        &keys,
-        to_process.iter().map(|f| f.id_str.as_str()),
-        &mut rate_limited,
-        |res| {
-            let res: DeleteResp = res.json()?;
-            let id = res.id_str;
+                    // TODO: https://github.com/console-rs/indicatif
+                    writeln!(stdout, "Deleted tweet {id}")?;
 
-            total += deleted(conn, [id.as_str()].iter().copied())?;
-
-            // TODO: https://github.com/console-rs/indicatif
-            writeln!(stdout, "Deleted tweet {id}")?;
-
-            Ok(())
-        },
-    )?;
-    writeln!(stdout, "Deleted {total} tweets")?;
+                    Ok(())
+                },
+            )?;
+            writeln!(stdout, "Deleted {total} tweets")?;
+        }
+    };
 
     Ok(())
 }
