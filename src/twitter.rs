@@ -34,15 +34,27 @@ type HmacSha1 = Hmac<Sha1>;
 
 /// Lookup 100 tweet IDs at a time
 ///
-/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-lookup
+/// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-lookup>
 pub const TWEET_LOOKUP_URL: &str = "https://api.twitter.com/1.1/statuses/lookup.json";
 
 /// Delete a tweet
 ///
 /// Ends in `{id}.json`
 ///
-/// https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id
-pub const TWEET_DESTROY_URL: &str = "https://api.twitter.com/1.1/statuses/destroy/";
+/// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id>
+pub const TWEET_DESTROY_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/destroy/";
+
+/// Unretweet a tweet
+///
+/// Ends in `{id}.json`
+///
+/// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-unretweet-id>
+pub const TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/unretweet/destroy/";
+
+/// Get information on a specific tweet
+///
+/// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-show-id>
+pub const TWEET_SHOW_URL: &str = "https://api.twitter.com/1.1/statuses/show.json";
 
 /// Indicates the rate limit response from the server
 #[derive(Debug, Clone, Copy)]
