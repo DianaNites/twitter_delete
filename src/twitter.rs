@@ -99,6 +99,13 @@ pub struct LookupTweet {
     pub created_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct DeleteResp {
+    /// Tweet ID
+    pub id_str: String,
+}
+
 /// Twitter tweet object. Internal, useless.
 #[derive(Debug, Deserialize)]
 struct TweetObj {

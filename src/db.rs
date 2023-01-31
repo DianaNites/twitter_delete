@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use diesel::{
-    dsl::{Asc, Eq, Filter, Lt, Order},
+    dsl::{And, Asc, Eq, Filter, Lt, Order},
     prelude::*,
     result::Error as DieselError,
 };
@@ -14,12 +14,12 @@ use crate::{models::Tweet, schema::tweets as db};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-type ExistingDeleted = Filter<db::dsl::tweets, Eq<db::dsl::deleted, bool>>;
-type ExistingFilter = Filter<ExistingDeleted, Eq<db::dsl::checked, bool>>;
-type CreatedBeforeFilter = Filter<db::dsl::tweets, Lt<db::dsl::created_at, i64>>;
+type ExistingDeleted = Eq<db::dsl::deleted, bool>;
+type ExistingChecked = Eq<db::dsl::checked, bool>;
+type CreatedBeforeAt = Lt<db::dsl::created_at, i64>;
 
-pub type Existing = Order<ExistingFilter, Asc<db::dsl::id_str>>;
-pub type CreatedBefore = Order<CreatedBeforeFilter, Asc<db::dsl::id_str>>;
+pub type Existing = And<ExistingDeleted, ExistingChecked>;
+pub type CreatedBefore = CreatedBeforeAt;
 
 /// Create or open a database at `db_path`
 ///
@@ -54,23 +54,16 @@ pub fn count_tweets(conn: &mut SqliteConnection) -> Result<i64> {
 /// Gets all tweets created before `utc`
 ///
 /// Uses UTC unix time.
-///
-/// In ascending/alphabetical/lexicographical order
 pub fn created_before(utc: i64) -> CreatedBefore {
     use db::dsl::*;
-    tweets.filter(created_at.lt(utc)).order(id_str.asc())
+    created_at.lt(utc)
 }
 
-/// Gets all existing, not marked as deleted, tweets, that haven't been checked
-/// already
-///
-/// In ascending/alphabetical/lexicographical order
+/// Gets all existing tweets, meaning not marked as deleted and not already
+/// checked?
 pub fn existing() -> Existing {
     use db::dsl::*;
-    tweets
-        .filter(deleted.eq(false))
-        .filter(checked.eq(false))
-        .order(id_str.asc())
+    deleted.eq(false).and(checked.eq(false))
 }
 
 /// Mark `tweets` as checked, returning how many were marked

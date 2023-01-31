@@ -33,7 +33,8 @@ use time::{
 use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
-    twitter::{collect_tweets, lookup_tweets, LookupResp, RateLimit},
+    schema::tweets as tdb,
+    twitter::{collect_tweets, delete_tweets, lookup_tweets, DeleteResp, LookupResp, RateLimit},
 };
 
 mod config;
@@ -122,22 +123,23 @@ fn main() -> Result<()> {
 
     let conn = &mut conn;
 
-    let to_process: Vec<MTweet> = created_before(off).load::<MTweet>(conn)?;
-
     let client = ClientBuilder::new().build()?;
 
     // Lookup tweets in the DB and mark them as deleted if they don't exist
     // Skips tweets we have already checked
-    // FIXME: This should use created_before..
-    let existing_tweets: Vec<MTweet> = existing()
-        // Why doesn't this work??
-        // .filter(&created_before(off))
+    let unchecked_tweets: Vec<MTweet> = tdb::dsl::tweets
+        .order(tdb::dsl::id_str.asc())
+        .filter(created_before(off))
+        .filter(existing())
         .load::<MTweet>(conn)?;
+
     println!(
         "Checking whether {} tweets were already deleted, out of {} total tweets",
-        existing_tweets.len(),
+        unchecked_tweets.len(),
         count_tweets(conn)?
     );
+
+    // let rate_limited =
 
     let mut stdout = stdout().lock();
     // Last `gone` and count of equal values
@@ -147,7 +149,7 @@ fn main() -> Result<()> {
     lookup_tweets(
         &client,
         &keys,
-        existing_tweets.iter().map(|f| f.id_str.as_str()),
+        unchecked_tweets.iter().map(|f| f.id_str.as_str()),
         |limit, _res| {
             let secs = match limit {
                 RateLimit::Until(secs) => secs,
@@ -216,6 +218,58 @@ fn main() -> Result<()> {
         stdout,
         "Marked {total} total tweets as already deleted from twitter"
     )?;
+
+    let to_process: Vec<MTweet> = tdb::dsl::tweets
+        .order(tdb::dsl::id_str.asc())
+        .filter(created_before(off))
+        .filter(existing())
+        .load::<MTweet>(conn)?;
+    println!(
+        "Deleting {} tweets, out of {} total tweets",
+        to_process.len(),
+        count_tweets(conn)?
+    );
+
+    let mut total = 0;
+
+    delete_tweets(
+        &client,
+        &keys,
+        to_process.iter().map(|f| f.id_str.as_str()),
+        |limit, _res| {
+            let secs = match limit {
+                RateLimit::Until(secs) => secs,
+                RateLimit::Unknown => 60 * 15,
+            } as i64;
+            let secs = secs
+                .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
+                .unwrap_or(60 * 15);
+
+            eprintln!(
+                "Rate limited, waiting until {} ({secs} seconds)",
+                (OffsetDateTime::now_utc() + Duration::seconds(secs))
+                    .to_offset(utc_offset)
+                    .time()
+                    .format(format_description!(
+                        "[hour repr:12]:[minute]:[second] [period]"
+                    ))?
+            );
+
+            Ok(())
+        },
+        |res| {
+            let res: DeleteResp = res.json()?;
+            let id = res.id_str;
+
+            total += deleted(conn, [id.as_str()].iter().copied())?;
+
+            // TODO: https://github.com/console-rs/indicatif
+            writeln!(stdout, "Deleted tweet {id}")?;
+
+            Ok(())
+        },
+    )?;
+    writeln!(stdout, "Deleted {total} tweets")?;
 
     // let mut args = Args::parse();
     Ok(())
