@@ -29,7 +29,7 @@ use time::{
 };
 
 use crate::{
-    db::{count_tweets, created_before, deleted, existing},
+    db::{checked, count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
     twitter::{collect_tweets, lookup_tweets, RateLimit},
 };
@@ -160,16 +160,17 @@ fn main() -> Result<()> {
         },
         |res| {
             let res: LookupResp = res.json()?;
+            let mut ids: Vec<&str> = res
+                .id
+                .iter()
+                .filter(|(_, v)| v.is_none())
+                .map(|(k, _)| k.as_str())
+                .collect();
+            // Make sure its sorted
+            ids.sort();
+            checked(conn, ids.iter().copied())?;
 
             let gone = conn.transaction::<_, anyhow::Error, _>(|conn| {
-                let mut ids: Vec<&str> = res
-                    .id
-                    .iter()
-                    .filter(|(_, v)| v.is_none())
-                    .map(|(k, _)| k.as_str())
-                    .collect();
-                // Make sure its sorted
-                ids.sort();
                 let gone = deleted(conn, ids.iter().copied())?;
                 Ok(gone)
             })?;
