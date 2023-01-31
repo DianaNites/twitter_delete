@@ -49,6 +49,9 @@ pub enum RateLimit {
     /// Represents that the rate limit resets at this time in the future
     ///
     /// UTC Unix time
+    ///
+    /// Note that this is an absolute value in the future, not a number of
+    /// seconds to wait
     Until(u64),
 
     /// Represents that it is unknown when the rate limit resets.
