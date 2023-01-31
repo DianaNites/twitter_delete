@@ -186,7 +186,7 @@ fn main() -> Result<()> {
             let added = import_tweets(conn, &path)?;
             writeln!(
                 stdout,
-                "Loaded {added} tweets. Total tweets {}",
+                "Imported {added} tweets. Total tweets {}",
                 count_tweets(conn)?
             )?;
 
