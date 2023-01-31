@@ -142,6 +142,7 @@ fn main() -> Result<()> {
     let mut stdout = stdout().lock();
     // Last `gone` and count of equal values
     let mut last = (0, 0);
+    let mut total = 0;
 
     lookup_tweets(
         &client,
@@ -184,6 +185,7 @@ fn main() -> Result<()> {
                 let gone = deleted(conn, ids.iter().copied())?;
                 Ok(gone)
             })?;
+            total += gone;
             if gone == last.0 {
                 last.1 += 1;
             } else {
@@ -207,6 +209,10 @@ fn main() -> Result<()> {
 
             Ok(())
         },
+    )?;
+    writeln!(
+        stdout,
+        "Marked {total} total tweets as already deleted from twitter"
     )?;
 
     // For some reason when I leave this running it keeps ending, but running it
