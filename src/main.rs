@@ -104,6 +104,11 @@ enum Args {
         #[clap(long, short = 'r', value_hint = ValueHint::Other, default_value = "0")]
         unless_retweets: u32,
     },
+
+    /// Show information about tweets in the database
+    Stats {
+        //
+    },
 }
 
 /// Import tweets from the twitter archive to our database
@@ -297,6 +302,28 @@ fn main() -> Result<()> {
             )?;
             pb.finish();
             writeln!(stdout, "Deleted {total} tweets")?;
+        }
+        Args::Stats {} => {
+            writeln!(
+                stdout,
+                "\
+Total Imported Tweets: {}
+Deleted Tweets: {}
+Checked* Tweets: {}
+
+*During Twitter Archive importing, tweets are checked for whether they've already
+been deleted or not. If this process was not interrupted, this is the same as the total tweets.
+",
+                count_tweets(conn)?,
+                tdb::dsl::tweets
+                    .filter(tdb::dsl::deleted.eq(true))
+                    .count()
+                    .get_result::<i64>(conn)?,
+                tdb::dsl::tweets
+                    .filter(tdb::dsl::checked.eq(true))
+                    .count()
+                    .get_result::<i64>(conn)?,
+            )?;
         }
     };
 
