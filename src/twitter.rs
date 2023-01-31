@@ -371,8 +371,20 @@ fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
                 // header
                 sleep(StdDuration::from_secs(60 * 15));
             }
-        } else if res.status().is_client_error() || res.status().is_server_error() {
-            return Err(anyhow!("Encountered HTTP error {}", res.status()));
+        } else if res.status().is_server_error() {
+            // Wait a minute and retry on transient server errors
+            eprintln!(
+                "Encountered transient HTTP error {}, waiting one minute\nData: {}",
+                res.status(),
+                res.text()?
+            );
+            sleep(StdDuration::from_secs(60));
+        } else if res.status().is_client_error() {
+            return Err(anyhow!(
+                "Encountered HTTP error {}\nData: {}",
+                res.status(),
+                res.text()?
+            ));
         }
     };
 
