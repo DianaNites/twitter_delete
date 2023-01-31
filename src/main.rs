@@ -16,7 +16,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Result};
-use clap::Parser;
+use clap::{Parser, ValueHint};
 use diesel::prelude::*;
 use reqwest::blocking::{ClientBuilder, Response};
 use serde::Deserialize;
@@ -53,11 +53,39 @@ static TWITTER_DATE: &[FormatItem] = format_description!(
 
 /// Parse tweets from your twitter archive
 #[derive(Parser, Debug)]
-struct Args {
-    /// Path to your twitter archive
+enum Args {
+    /// Import tweets from the twitter archive for processing
+    Import {
+        /// Path to your twitter archive
+        ///
+        /// This is the folder with "Your archive.html" in it.
+        #[clap(value_hint = ValueHint::DirPath)]
+        path: PathBuf,
+    },
+
+    /// Delete tweets that have been imported, subject to the provided filters
     ///
-    /// This is the folder with "Your archive.html" in it.
-    path: PathBuf,
+    /// Without any filters this will do nothing, as a precaution against
+    /// accidental deletions.
+    ///
+    /// If you want to delete all tweets, pass in a empty filter.
+    Delete {
+        /// Exclude these tweet IDs
+        #[clap(long, short, value_delimiter = ',', value_hint = ValueHint::Other)]
+        exclude: Vec<String>,
+
+        /// Delete tweets older than this many days
+        #[clap(long, short, value_hint = ValueHint::Other, default_value = "0")]
+        older_than: u32,
+
+        /// Don't delete tweets if they have at least this many likes
+        #[clap(long, short = 'l', value_hint = ValueHint::Other, default_value = "0")]
+        unless_likes: u32,
+
+        /// Don't delete tweets if they have at least this many retweets
+        #[clap(long, short = 'r', value_hint = ValueHint::Other, default_value = "0")]
+        unless_retweets: u32,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,6 +137,10 @@ fn main() -> Result<()> {
 
     fs::create_dir_all(config_path)?;
     let keys: Access = from_str(ACCESS)?;
+
+    let mut args = Args::parse();
+    dbg!(&args);
+    panic!();
 
     let mut conn = crate::db::create_db(&db_path)?;
     let conn = &mut conn;
@@ -261,6 +293,5 @@ fn main() -> Result<()> {
     )?;
     writeln!(stdout, "Deleted {total} tweets")?;
 
-    // let mut args = Args::parse();
     Ok(())
 }
