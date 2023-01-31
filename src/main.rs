@@ -18,7 +18,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use diesel::prelude::*;
-use reqwest::blocking::ClientBuilder;
+use reqwest::blocking::{ClientBuilder, Response};
 use serde::Deserialize;
 use serde_json::from_str;
 use time::{
@@ -139,7 +139,27 @@ fn main() -> Result<()> {
         count_tweets(conn)?
     );
 
-    // let rate_limited =
+    let mut rate_limited = |limit, _res: &Response| {
+        let secs = match limit {
+            RateLimit::Until(secs) => secs,
+            RateLimit::Unknown => 60 * 15,
+        } as i64;
+        let secs = secs
+            .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
+            .unwrap_or(60 * 15);
+
+        eprintln!(
+            "Rate limited, waiting until {} ({secs} seconds)",
+            (OffsetDateTime::now_utc() + Duration::seconds(secs))
+                .to_offset(utc_offset)
+                .time()
+                .format(format_description!(
+                    "[hour repr:12]:[minute]:[second] [period]"
+                ))?
+        );
+
+        Ok(())
+    };
 
     let mut stdout = stdout().lock();
     // Last `gone` and count of equal values
@@ -150,27 +170,7 @@ fn main() -> Result<()> {
         &client,
         &keys,
         unchecked_tweets.iter().map(|f| f.id_str.as_str()),
-        |limit, _res| {
-            let secs = match limit {
-                RateLimit::Until(secs) => secs,
-                RateLimit::Unknown => 60 * 15,
-            } as i64;
-            let secs = secs
-                .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
-                .unwrap_or(60 * 15);
-
-            eprintln!(
-                "Rate limited, waiting until {} ({secs} seconds)",
-                (OffsetDateTime::now_utc() + Duration::seconds(secs))
-                    .to_offset(utc_offset)
-                    .time()
-                    .format(format_description!(
-                        "[hour repr:12]:[minute]:[second] [period]"
-                    ))?
-            );
-
-            Ok(())
-        },
+        &mut rate_limited,
         |res| {
             let res: LookupResp = res.json()?;
             let mut ids: Vec<&str> = res
@@ -236,27 +236,7 @@ fn main() -> Result<()> {
         &client,
         &keys,
         to_process.iter().map(|f| f.id_str.as_str()),
-        |limit, _res| {
-            let secs = match limit {
-                RateLimit::Until(secs) => secs,
-                RateLimit::Unknown => 60 * 15,
-            } as i64;
-            let secs = secs
-                .checked_sub(OffsetDateTime::now_utc().unix_timestamp())
-                .unwrap_or(60 * 15);
-
-            eprintln!(
-                "Rate limited, waiting until {} ({secs} seconds)",
-                (OffsetDateTime::now_utc() + Duration::seconds(secs))
-                    .to_offset(utc_offset)
-                    .time()
-                    .format(format_description!(
-                        "[hour repr:12]:[minute]:[second] [period]"
-                    ))?
-            );
-
-            Ok(())
-        },
+        &mut rate_limited,
         |res| {
             let res: DeleteResp = res.json()?;
             let id = res.id_str;
