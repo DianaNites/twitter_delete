@@ -335,6 +335,8 @@ where
 /// and then repeats the request.
 ///
 /// Before waiting, calls `on_limit`. If this returns an error, it is returned.
+///
+/// Ignores transient HTTP 500 errors. `on_limit` is **NOT** called.
 fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
     req: &RequestBuilder,
     on_limit: F,
