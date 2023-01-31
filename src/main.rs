@@ -195,6 +195,7 @@ fn main() -> Result<()> {
             }
 
             if last.1 > 1 {
+                // TODO: https://github.com/console-rs/indicatif
                 write!(
                     stdout,
                     "Marked {gone} x{} tweets as already deleted from twitter\r",

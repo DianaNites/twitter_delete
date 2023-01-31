@@ -84,7 +84,7 @@ pub fn checked<'a>(
 ) -> Result<usize> {
     let gone = conn.transaction::<_, DieselError, _>(|conn| {
         let mut gone = 0;
-        // TODO: use between?
+        // TODO: use range of some sort?
         for tweet in tweets {
             use db::dsl::*;
             gone += diesel::update(tweets.find(tweet))
@@ -107,7 +107,7 @@ pub fn deleted<'a>(
 ) -> Result<usize> {
     let gone = conn.transaction::<_, DieselError, _>(|conn| {
         let mut gone = 0;
-        // TODO: use between?
+        // TODO: use range of some sort?
         for tweet in tweets {
             use db::dsl::*;
             gone += diesel::update(tweets.find(tweet))
