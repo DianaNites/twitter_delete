@@ -91,7 +91,7 @@ enum Args {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "UPPERCASE", deny_unknown_fields)]
 pub struct Access {
-    _test_path: PathBuf,
+    test_path: PathBuf,
     api_key: String,
     api_secret: String,
     access: String,
