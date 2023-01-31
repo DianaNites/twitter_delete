@@ -18,6 +18,7 @@ use std::{
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueHint};
 use diesel::prelude::*;
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::blocking::{ClientBuilder, Response};
 use serde::Deserialize;
 use serde_json::from_str;
@@ -173,6 +174,12 @@ fn main() -> Result<()> {
     };
     let mut stdout = stdout().lock();
 
+    let progress_style = ProgressStyle::with_template(
+        //
+        "{msg}\n[{elapsed_precise}] {wide_bar} {pos:>7}/{len:7} ({percent}%) \nETA: {eta_precise}\n{prefix}",
+    )
+    .unwrap();
+
     match args {
         Args::Import { path } => {
             let added = import_tweets(conn, &path)?;
@@ -203,6 +210,11 @@ fn main() -> Result<()> {
             let mut last = (0, 0);
             let mut total = 0;
 
+            let pb = ProgressBar::new(unchecked_tweets.len() as u64);
+            pb.set_message("Checking whether tweets exist");
+            pb.set_style(progress_style);
+            pb.tick();
+
             lookup_tweets(
                 &client,
                 &keys,
@@ -226,31 +238,15 @@ fn main() -> Result<()> {
                         Ok(gone)
                     })?;
                     total += gone;
-                    if gone == last.0 {
-                        last.1 += 1;
-                    } else {
-                        writeln!(stdout)?;
-                        last = (gone, 1);
-                    }
 
-                    if last.1 > 1 {
-                        // TODO: https://github.com/console-rs/indicatif
-                        write!(
-                            stdout,
-                            "Marked {gone} x{} tweets as already deleted from twitter\r",
-                            last.1
-                        )?;
-                    } else {
-                        write!(
-                            stdout,
-                            "Marked {gone} tweets as already deleted from twitter\r"
-                        )?;
-                    }
-                    stdout.flush()?;
+                    // Advance progress bar
+                    pb.inc(100);
+                    pb.set_prefix(format!("Deleted {gone} tweets"));
 
                     Ok(())
                 },
             )?;
+            pb.finish();
             writeln!(
                 stdout,
                 "Marked {total} total tweets as already deleted from twitter"
@@ -280,12 +276,11 @@ fn main() -> Result<()> {
                 .filter(tdb::dsl::retweets.lt(unless_retweets as i32))
                 .select(tdb::dsl::id_str)
                 .load::<String>(conn)?;
-            writeln!(
-                stdout,
-                "Deleting {} tweets, out of {} total tweets",
-                to_process.len(),
-                count_tweets(conn)?
-            )?;
+
+            let pb = ProgressBar::new(to_process.len() as u64);
+            pb.set_message("Deleting tweets");
+            pb.set_style(progress_style);
+            pb.tick();
 
             let mut total = 0;
 
@@ -300,12 +295,13 @@ fn main() -> Result<()> {
 
                     total += deleted(conn, [id.as_str()].iter().copied())?;
 
-                    // TODO: https://github.com/console-rs/indicatif
-                    writeln!(stdout, "Deleted tweet {id}")?;
+                    pb.inc(1);
+                    pb.set_prefix(format!("Deleted tweet {id}"));
 
                     Ok(())
                 },
             )?;
+            pb.finish();
             writeln!(stdout, "Deleted {total} tweets")?;
         }
     };

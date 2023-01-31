@@ -30,6 +30,7 @@ hmac = "0.12.1"
 sha1 = "0.10.5"
 urlencoding = "2.1.2"
 base64 = "0.21.0"
+indicatif = { version = "0.17.3", features = ["improved_unicode"] }
 
 [profile.dev.package."*"]
 opt-level = 2
