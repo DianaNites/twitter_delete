@@ -55,6 +55,9 @@ static TWITTER_DATE: &[FormatItem] = format_description!(
 #[derive(Parser, Debug)]
 enum Args {
     /// Import tweets from the twitter archive for processing
+    ///
+    /// Tweets are imported into a local database at
+    /// `$HOME/.config/twitter_delete/tweets.db`
     Import {
         /// Path to your twitter archive
         ///
