@@ -90,14 +90,14 @@ enum Args {
         #[clap(long, short, value_hint = ValueHint::Other)]
         older_than: u32,
 
-        /// Don't delete tweets if they have at least this many likes.
+        /// Don't delete tweets unless they have *more* than this many likes.
         ///
         /// WARNING, this is based on likes in your imported twitter archive.
         /// This DOES NOT check for the latest information on twitter
         #[clap(long, short = 'l', value_hint = ValueHint::Other, default_value = "0")]
         unless_likes: u32,
 
-        /// Don't delete tweets if they have at least this many retweets.
+        /// Don't delete tweets unless they have *more* than this many retweets.
         ///
         /// WARNING, this is based on retweets in your imported twitter archive.
         /// This DOES NOT check for the latest information on twitter
@@ -269,10 +269,10 @@ fn main() -> Result<()> {
             let to_process: Vec<String> = tdb::dsl::tweets
                 .order(tdb::dsl::id_str.asc())
                 .filter(created_before(off))
-                .filter(existing())
+                .filter(tdb::dsl::deleted.eq(false))
                 .filter(diesel::dsl::not(tdb::dsl::id_str.eq_any(&exclude)))
-                .filter(tdb::dsl::likes.lt(unless_likes as i32))
-                .filter(tdb::dsl::retweets.lt(unless_retweets as i32))
+                .filter(tdb::dsl::likes.le(unless_likes as i32))
+                .filter(tdb::dsl::retweets.le(unless_retweets as i32))
                 .select(tdb::dsl::id_str)
                 .load::<String>(conn)?;
 

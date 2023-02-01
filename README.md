@@ -35,7 +35,7 @@ If you want to potentially delete **ALL** tweets,
 you **MUST** pass `--older-than 0`
 
 To delete all tweets older than 30 days,
-unless they have at least 2 likes **and** 1 retweet,
+unless they have more than 2 likes **and** 1 retweet,
 and excluding the tweets ID `123456` or `7890`, this is the command.
 
 If you would like an *or* check, you will have to run this command multiple times
