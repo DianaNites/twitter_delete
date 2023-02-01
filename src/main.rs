@@ -8,7 +8,10 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, ValueHint};
 use diesel::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
-use reqwest::blocking::{ClientBuilder, Response};
+use reqwest::{
+    blocking::{ClientBuilder, Response},
+    StatusCode,
+};
 use serde::Deserialize;
 use serde_json::from_str;
 use time::{
@@ -24,15 +27,7 @@ use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
     models::Tweet as MTweet,
     schema::tweets as tdb,
-    twitter::{
-        collect_tweets,
-        delete_tweets,
-        lookup_tweets,
-        DeleteResp,
-        LookupResp,
-        RateLimit,
-        TWITTER_DATE,
-    },
+    twitter::{collect_tweets, delete_tweets, lookup_tweets, LookupResp, RateLimit, TWITTER_DATE},
 };
 
 mod config;
@@ -220,6 +215,7 @@ fn main() -> Result<()> {
                 },
                 |res| {
                     pb.disable_steady_tick();
+                    let res = res.error_for_status()?;
                     let res: LookupResp = res.json()?;
                     let mut ids: Vec<&str> = res
                         .id
@@ -289,12 +285,33 @@ fn main() -> Result<()> {
                     pb.enable_steady_tick(std::time::Duration::from_secs(1));
                     rate_limited(r, l)
                 },
-                |res| {
+                |res, id| {
                     pb.disable_steady_tick();
-                    let res: DeleteResp = res.json()?;
-                    let id = res.id_str;
+                    // Probably a retweet thats gone private... just ignore it
+                    // Sigh.
+                    // So the problem is that the twitter archive includes your RTs,
+                    // but *not* the `retweeted_status` object that identifies them as RTs!
+                    // And retweets can fail to be deleted!
+                    // In theory your own tweets should never
+                    // TODO: Pre-process them to mark as RTs.
+                    // We already call lookup anyway, the info should be there,
+                    // we just currently throw it away.
+                    if res.status() == StatusCode::FORBIDDEN {
+                        pb.inc(1);
+                        pb.set_prefix(format!("Failed to unretweet {id}"));
+                        return Ok(());
+                    }
+                    // Probably also a RT, this time thats been deleted
+                    // Sigh.
+                    if res.status() == StatusCode::NOT_FOUND {
+                        total += deleted(conn, [id].into_iter())?;
+                        pb.inc(1);
+                        pb.set_prefix(format!("Already deleted (re)tweet? {id}"));
+                        return Ok(());
+                    }
+                    res.error_for_status()?;
 
-                    total += deleted(conn, [id.as_str()].iter().copied())?;
+                    total += deleted(conn, [id].into_iter())?;
 
                     pb.inc(1);
                     pb.set_prefix(format!("Deleted tweet {id}"));

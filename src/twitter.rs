@@ -263,6 +263,8 @@ fn create_auth(
 /// Before waiting, calls `on_limit`. If this returns an error, it is returned.
 ///
 /// Ignores transient HTTP 500 errors. `on_limit` is **NOT** called.
+///
+/// Client errors are passed through
 fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
     req: &RequestBuilder,
     on_limit: F,
@@ -308,11 +310,7 @@ fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
             // );
             sleep(StdDuration::from_secs(60));
         } else if res.status().is_client_error() {
-            return Err(anyhow!(
-                "Encountered HTTP error {}\nData: {}",
-                res.status(),
-                res.text()?
-            ));
+            break res;
         }
     };
 
@@ -434,7 +432,7 @@ pub fn delete_tweets<'a, OnLimit, OnDelete>(
 ) -> Result<()>
 where
     OnLimit: FnMut(RateLimit, &Response) -> Result<()>,
-    OnDelete: FnMut(Response) -> Result<()>,
+    OnDelete: FnMut(Response, &str) -> Result<()>,
 {
     let mut on_limit = on_limit;
     let mut on_delete = on_delete;
@@ -458,7 +456,7 @@ where
             )
             .form(params);
         let res = rate_limit(&req, &mut on_limit)?;
-        on_delete(res)?;
+        on_delete(res, tweet)?;
     }
 
     Ok(())
