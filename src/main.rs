@@ -29,7 +29,15 @@ use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
     models::{Account as MAccount, Tweet as MTweet},
     schema::{accounts as adb, tweets as tdb},
-    twitter::{collect_tweets, delete_tweets, lookup_tweets, LookupResp, RateLimit, TWITTER_DATE},
+    twitter::{
+        collect_tweets,
+        delete_tweets,
+        lookup_tweets,
+        request_token,
+        LookupResp,
+        RateLimit,
+        TWITTER_DATE,
+    },
 };
 
 mod config;
@@ -79,6 +87,9 @@ enum Args {
     ///
     /// If you really want to delete ***ALL*** tweets, pass in `--older_than 0`
     Delete {
+        /// Account ID of the user to delete tweets for
+        account_id: String,
+
         /// Exclude these tweet IDs
         #[clap(long, short, value_delimiter = ',', value_hint = ValueHint::Other)]
         exclude: Vec<String>,
@@ -220,6 +231,7 @@ fn main() -> Result<()> {
     };
     let mut stdout = stdout().lock();
 
+    #[allow(warnings)]
     match args {
         Args::Import { path } => {
             let added = import_tweets(conn, &path)?;
@@ -291,6 +303,7 @@ fn main() -> Result<()> {
             )?;
         }
         Args::Delete {
+            account_id,
             exclude,
             older_than,
             unless_likes,
@@ -304,6 +317,20 @@ fn main() -> Result<()> {
                 )
             })?;
             let off = off.unix_timestamp();
+
+            let req = request_token(&client, &account_id, &keys);
+            // dbg!(&req);
+            panic!();
+
+            let user_keys = Access {
+                api_key: keys.api_key.clone(),
+                api_secret: keys.api_secret.clone(),
+                access: String::new(),
+                access_secret: String::new(),
+            };
+
+            dbg!(&user_keys);
+            panic!();
 
             let to_process: Vec<String> = tdb::dsl::tweets
                 .order(tdb::dsl::id_str.asc())

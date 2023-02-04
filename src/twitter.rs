@@ -56,6 +56,9 @@ pub const _TWEET_RETWEET_URL_FMT: &str = "https://api.twitter.com/1.1/statuses/u
 /// <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-show-id>
 pub const _TWEET_SHOW_URL: &str = "https://api.twitter.com/1.1/statuses/show.json";
 
+/// Oauth token request URL
+const OAUTH_REQUEST: &str = "https://api.twitter.com/oauth/request_token";
+
 /// The format of twitters `created_at` dates
 pub static TWITTER_DATE: &[FormatItem] = format_description!(
     "[weekday repr:short case_sensitive:false] [month repr:short] [day] [hour]:[minute]:[second] +0000 [year]"
@@ -172,14 +175,28 @@ pub struct Account {
 /// Create twitter authentication headers
 ///
 /// Params is not percent encoded
+///
+/// If `three_legged` is true then access tokens are skipped
 fn create_auth(
     keys: &Access,
     base_url: &str,
     method: Method,
     params: &[(String, String)],
+    three_legged: bool,
 ) -> String {
     let mut rng = thread_rng();
-    let auth = &[
+    let auth_three = &[
+        //
+        ("oauth_consumer_key", &keys.api_key),
+        ("oauth_nonce", &Alphanumeric.sample_string(&mut rng, 32)),
+        ("oauth_signature_method", &"HMAC-SHA1".to_string()),
+        (
+            "oauth_timestamp",
+            &OffsetDateTime::now_utc().unix_timestamp().to_string(),
+        ),
+        ("oauth_version", &"1.0".to_string()),
+    ];
+    let auth_ = &[
         //
         ("oauth_consumer_key", &keys.api_key),
         ("oauth_nonce", &Alphanumeric.sample_string(&mut rng, 32)),
@@ -191,6 +208,11 @@ fn create_auth(
         ("oauth_token", &keys.access),
         ("oauth_version", &"1.0".to_string()),
     ];
+    let auth = if !three_legged {
+        auth_.as_slice()
+    } else {
+        auth_three.as_slice()
+    };
     // Percent encoded auth values
     let mut auth: Vec<_> = auth
         .iter()
@@ -232,8 +254,12 @@ fn create_auth(
     // Sign key
     let mut sign_key = String::new();
     sign_key.push_str(&encode(&keys.api_secret));
-    sign_key.push('&');
-    sign_key.push_str(&encode(&keys.access_secret));
+    if !three_legged {
+        sign_key.push('&');
+        sign_key.push_str(&encode(&keys.access_secret));
+    } else {
+        // sign_key.push_str(&encode(""));
+    }
 
     // Sign it
     let mut mac: HmacSha1 = HmacSha1::new_from_slice(sign_key.as_bytes()).unwrap();
@@ -244,11 +270,19 @@ fn create_auth(
 
     // Final auth header string
     // Everything is already percent encoded
+    if !three_legged {
+        auth.push(("oauth_signature".to_string(), encode(&sig).into_owned()));
+    } else {
+        // auth.push(("oauth_signature".to_string(),
+        // encode(&sig).into_owned()));
+
+        // auth.push(("oauth_signature".
+        // to_string(), "oauth_signature".to_string()));
+    }
+    auth.sort_by(|a, b| a.0.cmp(&b.0));
+
     let mut auth_out = String::from("Oauth ");
-    for (k, v) in auth.into_iter().chain(once((
-        "oauth_signature".to_string(),
-        encode(&sig).into_owned(),
-    ))) {
+    for (k, v) in auth {
         auth_out.push_str(&k);
         auth_out.push_str("=\"");
         auth_out.push_str(&v);
@@ -443,6 +477,7 @@ where
                     TWEET_LOOKUP_URL,
                     Method::POST,
                     &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+                    false,
                 ),
             )
             .form(params);
@@ -490,6 +525,7 @@ where
                     &url,
                     Method::POST,
                     &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+                    false,
                 ),
             )
             .form(params);
@@ -497,5 +533,34 @@ where
         on_delete(res, tweet)?;
     }
 
+    Ok(())
+}
+
+#[allow(warnings)]
+pub fn request_token(client: &Client, id: &str, keys: &Access) -> Result<()> {
+    let params = &[
+        //
+        ("oauth_callback", "oob"),
+        // ("x_auth_access_type", "write"),
+    ];
+
+    let url = format!("{OAUTH_REQUEST}?oauth_callback=oob");
+    dbg!(&url);
+
+    let auth = create_auth(
+        keys,
+        &url,
+        Method::POST,
+        &params.map(|f| (f.0.to_owned(), f.1.to_owned())),
+        true,
+    );
+    dbg!(&auth);
+
+    let req = client
+        .post(&url)
+        .header(AUTHORIZATION, auth)
+        // .form(params)
+        .send()?;
+    dbg!(req.text());
     Ok(())
 }
