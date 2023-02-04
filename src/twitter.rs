@@ -157,10 +157,10 @@ pub struct Account {
     /// Tweet ID
     ///
     /// Currently 19 characters long, a 64-bit number.
-    pub account_id: String,
+    pub id_str: String,
 
     /// Account username at time of archive
-    pub username: String,
+    pub user_name: String,
 
     /// Account display name at time of archive
     pub display_name: String,

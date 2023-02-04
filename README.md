@@ -50,5 +50,19 @@ twitter_delete delete \
 
 This is done using the [v1.1 Destroy API][2]. This can only be done one at a time.
 
+### Warning
+
+If you ran this before `v0.1.1` then you need to run.
+
+If you do not, the database will not know which account the tweets belong
+to when displaying stats.
+
+This archive ***MUST*** be for the same account you originally imported in `v0.1.0`.
+
+```shell
+twitter_delete update --to "v0.1.1" PATH/TO/ARCHIVE/DIR
+```
+
+
 [1]: <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/get-statuses-lookup>
 [2]: <https://developer.twitter.com/en/docs/twitter-api/v1/tweets/post-and-engage/api-reference/post-statuses-destroy-id>

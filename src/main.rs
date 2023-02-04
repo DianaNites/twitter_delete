@@ -22,7 +22,7 @@ use time::{
     PrimitiveDateTime,
     UtcOffset,
 };
-use twitter::get_account;
+use twitter::{get_account, Account};
 
 use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
@@ -105,6 +105,33 @@ enum Args {
     Stats {
         //
     },
+
+    /// Update the application database if needed
+    Update {
+        /// Path to your twitter archive.
+        /// This archive MUST be for the same account you
+        /// originally imported in `v0.1.0`.
+        ///
+        /// This is the folder with "Your archive.html" in it.
+        #[clap(value_hint = ValueHint::DirPath)]
+        path: PathBuf,
+
+        /// The version being upgraded to, eg `v0.1.1`
+        #[clap(long = "to", value_hint = ValueHint::Other)]
+        to_ver: String,
+    },
+}
+
+fn get_acc(path: &Path) -> Result<Account> {
+    let account = get_account(path)?;
+    if account.id_str == "0" {
+        return Err(anyhow!(
+            "Invalid Twitter account ID 0 for @{} {}",
+            &account.user_name,
+            &account.display_name
+        ));
+    };
+    Ok(account)
 }
 
 /// Import tweets from the twitter archive to our database
@@ -112,14 +139,7 @@ enum Args {
 /// Ignores any tweets already in the database
 fn import_tweets(conn: &mut SqliteConnection, path: &Path) -> Result<usize> {
     let tweets = collect_tweets(path)?;
-    let account = get_account(path)?;
-    if account.account_id == "0" {
-        return Err(anyhow!(
-            "Invalid Twitter account ID 0 for @{} {}",
-            &account.username,
-            &account.display_name
-        ));
-    }
+    let account = get_acc(path)?;
 
     let tweets: Vec<MTweet> = tweets
         .into_iter()
@@ -134,11 +154,23 @@ fn import_tweets(conn: &mut SqliteConnection, path: &Path) -> Result<usize> {
                     .unwrap()
                     .assume_utc()
                     .unix_timestamp(),
-                account.account_id.clone(),
+                account.id_str.clone(),
             )
         })
         .collect();
-    let added = db::add_tweets(conn, &tweets)?;
+
+    let added = conn.transaction::<_, anyhow::Error, _>(|conn| {
+        diesel::insert_or_ignore_into(adb::table)
+            .values(&[MAccount {
+                id_str: account.id_str,
+                user_name: account.user_name,
+                display_name: account.display_name,
+            }])
+            .execute(conn)?;
+
+        let added = db::add_tweets(conn, &tweets)?;
+        Ok(added)
+    })?;
 
     Ok(added)
 }
@@ -386,6 +418,15 @@ been deleted or not. If this process was not interrupted, this is the same as th
                     .count()
                     .get_result::<i64>(conn)?,
             )?;
+        }
+        Args::Update { path, to_ver } => {
+            if to_ver == "v0.1.1" {
+                let account = get_acc(&path)?;
+                diesel::update(tdb::dsl::tweets)
+                    .filter(tdb::dsl::account_id.eq("0"))
+                    .set(tdb::dsl::account_id.eq(account.id_str))
+                    .execute(conn)?;
+            }
         }
     };
 
