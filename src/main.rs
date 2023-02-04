@@ -22,11 +22,12 @@ use time::{
     PrimitiveDateTime,
     UtcOffset,
 };
+use twitter::get_account;
 
 use crate::{
     db::{checked, count_tweets, created_before, deleted, existing},
-    models::Tweet as MTweet,
-    schema::tweets as tdb,
+    models::{Account as MAccount, Tweet as MTweet},
+    schema::{accounts as adb, tweets as tdb},
     twitter::{collect_tweets, delete_tweets, lookup_tweets, LookupResp, RateLimit, TWITTER_DATE},
 };
 
@@ -111,6 +112,14 @@ enum Args {
 /// Ignores any tweets already in the database
 fn import_tweets(conn: &mut SqliteConnection, path: &Path) -> Result<usize> {
     let tweets = collect_tweets(path)?;
+    let account = get_account(path)?;
+    if account.account_id == "0" {
+        return Err(anyhow!(
+            "Invalid Twitter account ID 0 for @{} {}",
+            &account.username,
+            &account.display_name
+        ));
+    }
 
     let tweets: Vec<MTweet> = tweets
         .into_iter()
@@ -125,6 +134,7 @@ fn import_tweets(conn: &mut SqliteConnection, path: &Path) -> Result<usize> {
                     .unwrap()
                     .assume_utc()
                     .unix_timestamp(),
+                account.account_id.clone(),
             )
         })
         .collect();
@@ -323,6 +333,39 @@ fn main() -> Result<()> {
             writeln!(stdout, "Deleted {total} tweets")?;
         }
         Args::Stats {} => {
+            let accounts: Vec<MAccount> = adb::dsl::accounts.get_results(conn)?;
+            let accounts = accounts.into_iter(); //.filter(|a| a.id_str != "0");
+            for acc in accounts {
+                writeln!(
+                    stdout,
+                    "\
+Account @{} {} ({})
+
+Imported Tweets: {}
+Deleted Tweets: {}
+Checked* Tweets: {}
+---
+",
+                    &acc.user_name,
+                    &acc.display_name,
+                    &acc.id_str,
+                    tdb::dsl::tweets
+                        .filter(tdb::dsl::account_id.eq(&acc.id_str))
+                        .count()
+                        .get_result::<i64>(conn)?,
+                    tdb::dsl::tweets
+                        .filter(tdb::dsl::account_id.eq(&acc.id_str))
+                        .filter(tdb::dsl::deleted.eq(true))
+                        .count()
+                        .get_result::<i64>(conn)?,
+                    tdb::dsl::tweets
+                        .filter(tdb::dsl::account_id.eq(&acc.id_str))
+                        .filter(tdb::dsl::checked.eq(true))
+                        .count()
+                        .get_result::<i64>(conn)?,
+                )?;
+            }
+
             writeln!(
                 stdout,
                 "\

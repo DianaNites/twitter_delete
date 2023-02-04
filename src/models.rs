@@ -2,7 +2,10 @@ use anyhow::anyhow;
 use diesel::prelude::*;
 use time::OffsetDateTime;
 
-use crate::{schema::tweets, twitter::TWITTER_DATE};
+use crate::{
+    schema::{accounts, tweets},
+    twitter::TWITTER_DATE,
+};
 
 #[derive(Queryable, Insertable, Clone)]
 #[diesel(table_name = tweets)]
@@ -24,10 +27,21 @@ pub struct Tweet {
 
     /// Whether the tweet has already been checked for existence
     pub checked: bool,
+
+    /// Account ID this tweet belongs to
+    ///
+    /// Corresponds to [`Account`]
+    pub account_id: String,
 }
 
 impl Tweet {
-    pub fn new(id_str: String, retweets: i32, likes: i32, created_at: i64) -> Self {
+    pub fn new(
+        id_str: String,
+        retweets: i32,
+        likes: i32,
+        created_at: i64,
+        account_id: String,
+    ) -> Self {
         Self {
             id_str,
             retweets,
@@ -35,6 +49,7 @@ impl Tweet {
             created_at,
             deleted: false,
             checked: false,
+            account_id,
         }
     }
 }
@@ -53,6 +68,16 @@ impl std::fmt::Debug for Tweet {
         } else {
             f.field("created_at", &self.created_at);
         }
-        f.finish()
+        f.field("checked", &self.checked)
+            .field("account_id", &self.account_id)
+            .finish()
     }
+}
+
+#[derive(Debug, Queryable, Insertable, Clone)]
+#[diesel(table_name = accounts)]
+pub struct Account {
+    pub id_str: String,
+    pub user_name: String,
+    pub display_name: String,
 }

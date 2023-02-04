@@ -4,13 +4,17 @@ use std::path::Path;
 
 use anyhow::{anyhow, Result};
 use diesel::{
-    dsl::{And, Eq, Lt},
+    dsl::{sql, And, Eq, Lt},
     prelude::*,
     result::Error as DieselError,
+    sql_types::Untyped,
 };
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
-use crate::{models::Tweet, schema::tweets as db};
+use crate::{
+    models::Tweet,
+    schema::{accounts as adb, tweets as db},
+};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -29,6 +33,7 @@ pub fn create_db(db_path: &Path) -> Result<SqliteConnection> {
         .to_str()
         .ok_or_else(|| anyhow!("Invalid UTF-8 in database path {}", db_path.display()))?;
     let mut conn = SqliteConnection::establish(db_path)?;
+    sql::<Untyped>("PRAGMA foreign_keys = ON;").execute(&mut conn)?;
 
     conn.run_pending_migrations(MIGRATIONS)
         .map_err(|e| anyhow!(e))?;
@@ -48,6 +53,14 @@ pub fn add_tweets(conn: &mut SqliteConnection, tweets: &[Tweet]) -> Result<usize
 /// Return how many tweets there are in the database
 pub fn count_tweets(conn: &mut SqliteConnection) -> Result<i64> {
     let c = db::dsl::tweets.count().get_result::<i64>(conn)?;
+    Ok(c)
+}
+
+/// Return how many accounts there are in the database
+///
+/// Does not include the "default" unknown account
+pub fn _count_accounts(conn: &mut SqliteConnection) -> Result<i64> {
+    let c = adb::dsl::accounts.count().get_result::<i64>(conn)?;
     Ok(c)
 }
 

@@ -142,23 +142,28 @@ pub struct Tweet {
     pub created_at: String,
 }
 
-#[cfg(no)]
-impl Tweet {
-    pub fn id(&self) -> &str {
-        self.id_str.as_ref()
-    }
+/// Twitter account object. Internal, useless.
+#[derive(Debug, Deserialize)]
+struct AccountObj {
+    account: Account,
+}
 
-    pub fn retweets(&self) -> &str {
-        self.retweet_count.as_ref()
-    }
+/// A Account in the twitter archive.
+///
+/// NOTE: This is ***different*** than what would be returned by
+/// the twitter API.
+#[derive(Debug, Deserialize)]
+pub struct Account {
+    /// Tweet ID
+    ///
+    /// Currently 19 characters long, a 64-bit number.
+    pub account_id: String,
 
-    pub fn likes(&self) -> &str {
-        self.like_count.as_ref()
-    }
+    /// Account username at time of archive
+    pub username: String,
 
-    pub fn created_at(&self) -> &str {
-        self.created_at.as_ref()
-    }
+    /// Account display name at time of archive
+    pub display_name: String,
 }
 
 /// Create twitter authentication headers
@@ -315,6 +320,31 @@ fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
     };
 
     Ok(res)
+}
+
+/// Remove the prefix in twitter archive files
+fn remove_prefix(data: &str) -> &str {
+    // Twitter puts this nonsense in front of the tweet files
+    // Assume there are less than 99 parts.
+    // This will work for both single and double digits
+    // The full line is  `window.YTD.tweets.part4 = [`
+    const PREFIX: &str = "window.YTD.tweets.part99 ";
+    &data[PREFIX.len()..]
+}
+
+/// Get the account ID for this twitter archive
+pub fn get_account(path: &Path) -> Result<Account> {
+    let path = path.join("data").join("account.js");
+    let data = fs::read_to_string(path)?;
+    let data = remove_prefix(&data);
+
+    let acc: Vec<AccountObj> = from_str(data)?;
+    let acc = acc
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("Couldn't get twitter account information"))?;
+
+    Ok(acc.account)
 }
 
 /// Collect tweets from the twitter archive. Returns ALL found tweets.
