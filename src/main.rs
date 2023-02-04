@@ -195,8 +195,7 @@ fn main() -> Result<()> {
 
     let progress_style = ProgressStyle::with_template(
         "{msg}\n[{elapsed_precise}] {wide_bar} {pos:>7}/{len:7} ({percent}%) \nETA: {eta_precise}\n{prefix}",
-    )
-    .unwrap();
+    )?;
     let pb = ProgressBar::new(0);
     pb.set_style(progress_style);
 
