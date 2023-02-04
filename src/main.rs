@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueHint};
+use db::add_account;
 use diesel::prelude::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::{
@@ -160,13 +161,14 @@ fn import_tweets(conn: &mut SqliteConnection, path: &Path) -> Result<usize> {
         .collect();
 
     let added = conn.transaction::<_, anyhow::Error, _>(|conn| {
-        diesel::insert_or_ignore_into(adb::table)
-            .values(&[MAccount {
+        add_account(
+            conn,
+            &[MAccount {
                 id_str: account.id_str,
                 user_name: account.user_name,
                 display_name: account.display_name,
-            }])
-            .execute(conn)?;
+            }],
+        )?;
 
         let added = db::add_tweets(conn, &tweets)?;
         Ok(added)
@@ -422,10 +424,23 @@ been deleted or not. If this process was not interrupted, this is the same as th
         Args::Update { path, to_ver } => {
             if to_ver == "v0.1.1" {
                 let account = get_acc(&path)?;
-                diesel::update(tdb::dsl::tweets)
-                    .filter(tdb::dsl::account_id.eq("0"))
-                    .set(tdb::dsl::account_id.eq(account.id_str))
-                    .execute(conn)?;
+
+                conn.transaction::<_, anyhow::Error, _>(|conn| {
+                    add_account(
+                        conn,
+                        &[MAccount {
+                            id_str: account.id_str.clone(),
+                            user_name: account.user_name,
+                            display_name: account.display_name,
+                        }],
+                    )?;
+
+                    diesel::update(tdb::dsl::tweets)
+                        .filter(tdb::dsl::account_id.eq("0"))
+                        .set(tdb::dsl::account_id.eq(account.id_str))
+                        .execute(conn)?;
+                    Ok(())
+                })?;
             }
         }
     };

@@ -12,7 +12,7 @@ use diesel::{
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 
 use crate::{
-    models::Tweet,
+    models::{Account, Tweet},
     schema::{accounts as adb, tweets as db},
 };
 
@@ -46,6 +46,13 @@ pub fn create_db(db_path: &Path) -> Result<SqliteConnection> {
 pub fn add_tweets(conn: &mut SqliteConnection, tweets: &[Tweet]) -> Result<usize> {
     let added = diesel::insert_or_ignore_into(db::table)
         .values(tweets)
+        .execute(conn)?;
+    Ok(added)
+}
+
+pub fn add_account(conn: &mut SqliteConnection, accounts: &[Account]) -> Result<usize> {
+    let added = diesel::insert_or_ignore_into(adb::table)
+        .values(accounts)
         .execute(conn)?;
     Ok(added)
 }
