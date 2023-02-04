@@ -157,12 +157,15 @@ pub struct Account {
     /// Tweet ID
     ///
     /// Currently 19 characters long, a 64-bit number.
+    #[serde(rename = "accountId")]
     pub id_str: String,
 
     /// Account username at time of archive
+    #[serde(rename = "username")]
     pub user_name: String,
 
     /// Account display name at time of archive
+    #[serde(rename = "accountDisplayName")]
     pub display_name: String,
 }
 
@@ -323,7 +326,7 @@ fn rate_limit<F: FnMut(RateLimit, &Response) -> Result<()>>(
 }
 
 /// Remove the prefix in twitter archive files
-fn remove_prefix(data: &str) -> &str {
+fn remove_tweet_prefix(data: &str) -> &str {
     // Twitter puts this nonsense in front of the tweet files
     // Assume there are less than 99 parts.
     // This will work for both single and double digits
@@ -332,11 +335,20 @@ fn remove_prefix(data: &str) -> &str {
     &data[PREFIX.len()..]
 }
 
+/// Remove the prefix in twitter archive files
+fn remove_account_prefix(data: &str) -> &str {
+    // Twitter puts this nonsense in front of the account.js file
+    // Assume there is one account
+    // The full line is  `window.YTD.account.part0 = [`
+    const PREFIX: &str = "window.YTD.account.part0 =";
+    &data[PREFIX.len()..]
+}
+
 /// Get the account ID for this twitter archive
 pub fn get_account(path: &Path) -> Result<Account> {
     let path = path.join("data").join("account.js");
     let data = fs::read_to_string(path)?;
-    let data = remove_prefix(&data);
+    let data = remove_account_prefix(&data);
 
     let acc: Vec<AccountObj> = from_str(data)?;
     let acc = acc
@@ -377,14 +389,10 @@ pub fn collect_tweets(path: &Path) -> Result<Vec<Tweet>> {
 
     let mut out = Vec::new();
     for path in files {
-        // Twitter puts this nonsense in front of the tweet files
-        // Assume there are less than 99 parts.
-        // This will work for both single and double digits
-        // The full line is  `window.YTD.tweets.part4 = [`
-        const PREFIX: &str = "window.YTD.tweets.part99 ";
         let data = fs::read_to_string(path)?;
+        let data = remove_tweet_prefix(&data);
 
-        let data: Vec<TweetObj> = from_str(&data[PREFIX.len()..])?;
+        let data: Vec<TweetObj> = from_str(data)?;
         out.extend(data.into_iter().map(|t| t.tweet));
     }
 
