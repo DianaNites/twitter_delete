@@ -1,5 +1,7 @@
 # Twitter Delete
 
+**NOTE:** All development has halted due to twitters impending plan to cut off/charge for API access.
+
 A simple tool to process a twitter archive of its tweets, and then delete them,
 subject to some basic criteria
 
