@@ -7,8 +7,9 @@ use crate::{
     twitter::TWITTER_DATE,
 };
 
-#[derive(Queryable, Insertable, Clone)]
+#[derive(Queryable, Insertable, Clone, Associations)]
 #[diesel(table_name = tweets)]
+#[diesel(belongs_to(Account))]
 pub struct Tweet {
     /// Tweet ID. Primary key, Unique.
     pub id_str: String,
